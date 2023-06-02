@@ -1,0 +1,69 @@
+__pycache__
+/references/**
+sql_statements*.ini
+/config/sql_queries_local/**
+[Ignore]/
+*bkup*.*
+* - Copy*.*
+*_local*.*
+*/Logs/**
+main*.py
+!main.py
+set_keyring_passwords.py
+docker/*/*.env
+/.vscode/**
+launch.json
+~$*.xls*
+
+# Temporary exclusions
+docker/**
+tests/*
+# Dockerfile
+# entrypoint.sh
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
