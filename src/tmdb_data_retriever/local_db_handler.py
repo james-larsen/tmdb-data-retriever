@@ -1,6 +1,7 @@
 #%%
 import pandas as pd
 from sqlalchemy import text
+from nexus_utils import database_utils
 
 
 class LocalDB:
@@ -20,6 +21,21 @@ class LocalDB:
         ):
 
         self.engine = engine
+        functioning_engine = False
+        self._engine_status = 'Unknown status'
+        if self.engine is None:
+            self._engine_status = 'DB Engine could not be built'
+        else:
+            try:
+                result = database_utils.check_engine_read(engine)
+                if result == 'Success':
+                    functioning_engine = True
+                    self._engine_status = 'DB Engine Functional'
+                else:
+                    self._engine_status = f'DB Engine failed:  {result}'
+            except Exception as e:
+                self._engine_status = 'DB Engine failed to read from database'
+            
         self.adult_content_flag = adult_content_flag
 
         self.error_tmdb_id_list = []
@@ -27,58 +43,30 @@ class LocalDB:
 
         if loaded_titles_sql:
             self.loaded_titles_sql = loaded_titles_sql
-        # else:
-        #     self.loaded_titles_sql = None
 
         if loaded_titles_sql:
             self.loaded_title_cast_sql = loaded_title_cast_sql
-        # else:
-        #     self.loaded_title_cast_sql = None
 
         if loaded_persons_sql:
             self.loaded_persons_sql = loaded_persons_sql
-        # else:
-        #     self.loaded_persons_sql = None
 
         if loaded_title_images_sql:
             self.loaded_title_images_sql = loaded_title_images_sql
-        # else:
-        #     self.loaded_title_images_sql = None
 
         if favorite_persons_sql:
             self.favorite_persons_sql = favorite_persons_sql
-        # else:
-        #     self.favorite_persons_sql = None
 
         if search_terms_sql:
             self.search_terms_sql = search_terms_sql
-        # else:
-        #     self.search_terms_sql = None
 
         if titles_missing_cast_sql:
             self.titles_missing_cast_sql = titles_missing_cast_sql
-        # else:
-        #     self.titles_missing_cast_sql = None
 
         if titles_missing_keywords_sql:
             self.titles_missing_keywords_sql = titles_missing_keywords_sql
-        # else:
-        #     self.titles_missing_keywords_sql = None
 
         if persons_missing_sql:
             self.persons_missing_sql = persons_missing_sql
-        # else:
-        #     self.persons_missing_sql = None
-
-        # self.loaded_titles = self.get_loaded_titles()
-        # self.loaded_title_cast = self.get_loaded_title_cast()
-        # self.loaded_persons = self.get_loaded_persons()
-        # self.loaded_title_images = self.get_loaded_title_images()
-        # self.favorite_persons = self.get_favorite_persons()
-        # self.search_terms = self.get_search_terms()
-        # self.titles_missing_cast = self.determine_missing_title_cast()
-        # self.titles_missing_keywords = self.determine_missing_keywords()
-        # self.persons_missing = self.determine_missing_persons()
         
         self._loaded_titles_checked_flag = False
         self._loaded_titles = []
@@ -99,6 +87,23 @@ class LocalDB:
         self._persons_missing_checked_flag = False
         self._persons_missing = []
 
+        if not functioning_engine:
+            print(self._engine_status)
+            self._loaded_titles_checked_flag = True
+            self._loaded_title_cast_checked_flag = True
+            self._loaded_persons_checked_flag = True
+            self._loaded_title_images_checked_flag = True
+            self._favorite_persons_checked_flag = True
+            self._search_terms_checked_flag = True
+            self._titles_missing_cast_checked_flag = True
+            self._titles_missing_keywords_checked_flag = True
+            self._persons_missing_checked_flag = True
+
+    @property
+    def engine_status(self):
+        """Engine status message"""
+        return self._engine_status
+
     @property
     def loaded_titles(self):#, select_query=None):
         """Retrieve all TMDB IDs already loaded"""
@@ -106,18 +111,22 @@ class LocalDB:
         if not self._loaded_titles_checked_flag:
             if self.loaded_titles_sql:
                 select_query = self.loaded_titles_sql
-                
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('loaded_titles: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                    
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('loaded_titles: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._loaded_titles_checked_flag = True
-                
-                if not df.empty:
-                    df.columns = ['tmdb_id']
-                    self._loaded_titles = df['tmdb_id'].tolist()
-                else:
+                    self._loaded_titles_checked_flag = True
+                    
+                    if not df.empty:
+                        df.columns = ['tmdb_id']
+                        self._loaded_titles = df['tmdb_id'].tolist()
+                    else:
+                        self._loaded_titles = []
+                except Exception as e:
+                    self._loaded_titles_checked_flag = True
                     self._loaded_titles = []
             else:
                 self._loaded_titles = []
@@ -132,17 +141,21 @@ class LocalDB:
             if self.loaded_title_cast_sql:
                 select_query = self.loaded_title_cast_sql
             
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('loaded_title_cast: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('loaded_title_cast: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._loaded_title_cast_checked_flag = True
+                    self._loaded_title_cast_checked_flag = True
 
-                if not df.empty:
-                    df.columns = ['tmdb_id']
-                    self._loaded_title_cast = df['tmdb_id'].tolist()
-                else:
+                    if not df.empty:
+                        df.columns = ['tmdb_id']
+                        self._loaded_title_cast = df['tmdb_id'].tolist()
+                    else:
+                        self._loaded_title_cast = []
+                except Exception as e:
+                    self._loaded_title_cast_checked_flag = True
                     self._loaded_title_cast = []
             else:
                 self._loaded_title_cast = []
@@ -157,17 +170,21 @@ class LocalDB:
             if self.loaded_persons_sql:
                 select_query = self.loaded_persons_sql
                 
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('loaded_persons: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('loaded_persons: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._loaded_persons_checked_flag = True
-                
-                if not df.empty:
-                    df.columns = ['person_id']
-                    self._loaded_persons = df['person_id'].tolist()
-                else:
+                    self._loaded_persons_checked_flag = True
+                    
+                    if not df.empty:
+                        df.columns = ['person_id']
+                        self._loaded_persons = df['person_id'].tolist()
+                    else:
+                        self._loaded_persons = []
+                except Exception as e:
+                    self._loaded_persons_checked_flag = True
                     self._loaded_persons = []
             else:
                 self._loaded_persons = []
@@ -182,17 +199,21 @@ class LocalDB:
             if self.loaded_title_images_sql:
                 select_query = self.loaded_title_images_sql
                 
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('loaded_title_images: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('loaded_title_images: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._loaded_title_images_checked_flag = True
+                    self._loaded_title_images_checked_flag = True
 
-                if not df.empty:
-                    df.columns = ['tmdb_id']
-                    self._loaded_title_images = df['tmdb_id'].tolist()
-                else:
+                    if not df.empty:
+                        df.columns = ['tmdb_id']
+                        self._loaded_title_images = df['tmdb_id'].tolist()
+                    else:
+                        self._loaded_title_images = []
+                except Exception as e:
+                    self._loaded_title_images_checked_flag = True
                     self._loaded_title_images = []
             else:
                 self._loaded_title_images = []
@@ -207,22 +228,26 @@ class LocalDB:
             if self.favorite_persons_sql:
                 select_query = self.favorite_persons_sql
                 
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('favorite_persons: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('favorite_persons: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._favorite_persons_checked_flag = True
+                    self._favorite_persons_checked_flag = True
 
-                if not df.empty:
-                    df.columns = ['person_id', 'adult_flag']
-                    if self.adult_content_flag == 'exclude':
-                        self._favorite_persons = df[df['adult_flag'] == 'F']['person_id'].tolist()
-                    elif self.adult_content_flag == 'only':
-                        self._favorite_persons = df[df['adult_flag'] == 'T']['person_id'].tolist()
+                    if not df.empty:
+                        df.columns = ['person_id', 'adult_flag']
+                        if self.adult_content_flag == 'exclude':
+                            self._favorite_persons = df[df['adult_flag'] == 'F']['person_id'].tolist()
+                        elif self.adult_content_flag == 'only':
+                            self._favorite_persons = df[df['adult_flag'] == 'T']['person_id'].tolist()
+                        else:
+                            self._favorite_persons = df['person_id'].tolist()
                     else:
-                        self._favorite_persons = df['person_id'].tolist()
-                else:
+                        self._favorite_persons = []
+                except Exception as e:
+                    self._favorite_persons_checked_flag = True
                     self._favorite_persons = []
             else:
                 self._favorite_persons = []
@@ -237,18 +262,22 @@ class LocalDB:
             if self.search_terms_sql:
                 select_query = self.search_terms_sql
                 
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('search_terms: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
-                    df.columns = ['search_term']
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('search_terms: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
+                        df.columns = ['search_term']
 
-                self._search_terms_checked_flag = True
+                    self._search_terms_checked_flag = True
 
-                if not df.empty:
-                    df.columns = ['search_term']
-                    self._search_terms = df['search_term'].tolist()
-                else:
+                    if not df.empty:
+                        df.columns = ['search_term']
+                        self._search_terms = df['search_term'].tolist()
+                    else:
+                        self._search_terms = []
+                except Exception as e:
+                    self._search_terms_checked_flag = True
                     self._search_terms = []
             else:
                 self._search_terms = []
@@ -263,22 +292,26 @@ class LocalDB:
             if self.titles_missing_cast_sql:
                 select_query = self.titles_missing_cast_sql
                 
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('titles_missing_cast: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('titles_missing_cast: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._titles_missing_cast_checked_flag = True
+                    self._titles_missing_cast_checked_flag = True
 
-                if not df.empty:
-                    df.columns = ['tmdb_id', 'adult_flag']
-                    if self.adult_content_flag == 'exclude':
-                        self._titles_missing_cast = df[df['adult_flag'] == 'F']['tmdb_id'].tolist()
-                    elif self.adult_content_flag == 'only':
-                        self._titles_missing_cast = df[df['adult_flag'] == 'T']['tmdb_id'].tolist()
+                    if not df.empty:
+                        df.columns = ['tmdb_id', 'adult_flag']
+                        if self.adult_content_flag == 'exclude':
+                            self._titles_missing_cast = df[df['adult_flag'] == 'F']['tmdb_id'].tolist()
+                        elif self.adult_content_flag == 'only':
+                            self._titles_missing_cast = df[df['adult_flag'] == 'T']['tmdb_id'].tolist()
+                        else:
+                            self._titles_missing_cast = df['tmdb_id'].tolist()
                     else:
-                        self._titles_missing_cast = df['tmdb_id'].tolist()
-                else:
+                        self._titles_missing_cast = []
+                except Exception as e:
+                    self._titles_missing_cast_checked_flag = True
                     self._titles_missing_cast = []
             else:
                 self._titles_missing_cast = []
@@ -293,22 +326,26 @@ class LocalDB:
             if self.titles_missing_keywords_sql:
                 select_query = self.titles_missing_keywords_sql
                 
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('titles_missing_keywords: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('titles_missing_keywords: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._titles_missing_keywords_checked_flag = True
+                    self._titles_missing_keywords_checked_flag = True
 
-                if not df.empty:
-                    df.columns = ['tmdb_id', 'adult_flag']
-                    if self.adult_content_flag == 'exclude':
-                        self._titles_missing_keywords = df[df['adult_flag'] == 'F']['tmdb_id'].tolist()
-                    elif self.adult_content_flag == 'only':
-                        self._titles_missing_keywords = df[df['adult_flag'] == 'T']['tmdb_id'].tolist()
+                    if not df.empty:
+                        df.columns = ['tmdb_id', 'adult_flag']
+                        if self.adult_content_flag == 'exclude':
+                            self._titles_missing_keywords = df[df['adult_flag'] == 'F']['tmdb_id'].tolist()
+                        elif self.adult_content_flag == 'only':
+                            self._titles_missing_keywords = df[df['adult_flag'] == 'T']['tmdb_id'].tolist()
+                        else:
+                            self._titles_missing_keywords = df['tmdb_id'].tolist()
                     else:
-                        self._titles_missing_keywords = df['tmdb_id'].tolist()
-                else:
+                        self._titles_missing_keywords = []
+                except Exception as e:
+                    self._titles_missing_keywords_checked_flag = True
                     self._titles_missing_keywords = []
             else:
                 self._titles_missing_keywords = []
@@ -323,22 +360,26 @@ class LocalDB:
             if self.persons_missing_sql:
                 select_query = self.persons_missing_sql
                 
-                with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
-                    # print('persons_missing: querying database')
-                    results = conn.execute(text(select_query))
-                    df = pd.DataFrame(results)
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('persons_missing: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
 
-                self._persons_missing_checked_flag = True
+                    self._persons_missing_checked_flag = True
 
-                if not df.empty:
-                    df.columns = ['person_id', 'adult_flag']
-                    if self.adult_content_flag == 'exclude':
-                        self._persons_missing = df[df['adult_flag'] == 'F']['person_id'].tolist()
-                    elif self.adult_content_flag == 'only':
-                        self._persons_missing = df[df['adult_flag'] == 'T']['person_id'].tolist()
+                    if not df.empty:
+                        df.columns = ['person_id', 'adult_flag']
+                        if self.adult_content_flag == 'exclude':
+                            self._persons_missing = df[df['adult_flag'] == 'F']['person_id'].tolist()
+                        elif self.adult_content_flag == 'only':
+                            self._persons_missing = df[df['adult_flag'] == 'T']['person_id'].tolist()
+                        else:
+                            self._persons_missing = df['person_id'].tolist()
                     else:
-                        self._persons_missing = df['person_id'].tolist()
-                else:
+                        self._persons_missing = []
+                except Exception as e:
+                    self._persons_missing_checked_flag = True
                     self._persons_missing = []
             else:
                 self._persons_missing = []

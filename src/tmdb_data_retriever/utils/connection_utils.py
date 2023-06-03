@@ -1,4 +1,6 @@
 from pathlib import Path
+from sqlalchemy.exc import OperationalError
+from sqlalchemy import text
 from nexus_utils import config_utils as cr
 
 # def check_for_local_config(config_path):
@@ -20,34 +22,34 @@ def read_app_config_settings(_app_config_path):
     local_config_entry = 'app_settings'
     output_path = app_config[local_config_entry]['output_path']
     images_path = app_config[local_config_entry]['images_path']
-    log_file_path = app_config[local_config_entry]['log_file_path']
-    password_method = app_config[local_config_entry]['password_method']
-    password_access_key = app_config[local_config_entry]['password_access_key']
-    password_secret_key = app_config[local_config_entry]['password_secret_key']
-    password_endpoint_url = app_config[local_config_entry]['password_endpoint_url']
-    password_region_name = app_config[local_config_entry]['password_region_name']
-    password_password_path = app_config[local_config_entry]['password_password_path']
-    read_chunk_size = int(app_config[local_config_entry]['read_chunk_size'])
-    archive_flag = app_config[local_config_entry]['archive_flag'].lower() in ['t', 'true', 'y', 'yes', '1', 'on', 'archive']
-    logging_flag = app_config[local_config_entry]['logging_flag'].lower() in ['t', 'true', 'y', 'yes', '1', 'on', 'log']
-    log_archive_expire_days = int(app_config[local_config_entry]['log_archive_expire_days']),
+    # log_file_path = app_config[local_config_entry]['log_file_path']
+    # password_method = app_config[local_config_entry]['password_method']
+    # password_access_key = app_config[local_config_entry]['password_access_key']
+    # password_secret_key = app_config[local_config_entry]['password_secret_key']
+    # password_endpoint_url = app_config[local_config_entry]['password_endpoint_url']
+    # password_region_name = app_config[local_config_entry]['password_region_name']
+    # password_password_path = app_config[local_config_entry]['password_password_path']
+    # read_chunk_size = int(app_config[local_config_entry]['read_chunk_size'])
+    # archive_flag = app_config[local_config_entry]['archive_flag'].lower() in ['t', 'true', 'y', 'yes', '1', 'on', 'archive']
+    # logging_flag = app_config[local_config_entry]['logging_flag'].lower() in ['t', 'true', 'y', 'yes', '1', 'on', 'log']
+    # log_archive_expire_days = int(app_config[local_config_entry]['log_archive_expire_days']),
     original_language = app_config[local_config_entry]['original_language']
     adult_content_flag = app_config[local_config_entry]['adult_content_flag'].lower()
 
     return (
         output_path, 
         images_path, 
-        log_file_path, 
-        password_method, 
-        password_access_key, 
-        password_secret_key, 
-        password_endpoint_url, 
-        password_region_name, 
-        password_password_path, 
-        read_chunk_size, 
-        archive_flag, 
-        logging_flag, 
-        log_archive_expire_days, 
+        # log_file_path, 
+        # password_method, 
+        # password_access_key, 
+        # password_secret_key, 
+        # password_endpoint_url, 
+        # password_region_name, 
+        # password_password_path, 
+        # read_chunk_size, 
+        # archive_flag, 
+        # logging_flag, 
+        # log_archive_expire_days, 
         original_language, 
         adult_content_flag
         )
@@ -61,7 +63,13 @@ def read_connection_config_settings(_connection_config_path, config_entry):
         server_address = db_config[config_entry]['server_address']
         server_port = db_config[config_entry]['server_port']
         server_name = db_config[config_entry]['server_name']
-        schema = db_config[config_entry]['schema']
+        # schema = db_config[config_entry]['schema']
+        password_method = db_config[config_entry]['password_method']
+        password_access_key = db_config[config_entry]['password_access_key']
+        password_secret_key = db_config[config_entry]['password_secret_key']
+        password_endpoint_url = db_config[config_entry]['password_endpoint_url']
+        password_region_name = db_config[config_entry]['password_region_name']
+        password_password_path = db_config[config_entry]['password_password_path']
         user_name = db_config[config_entry]['user_name']
         secret_key = db_config[config_entry]['secret_key']
 
@@ -70,7 +78,13 @@ def read_connection_config_settings(_connection_config_path, config_entry):
             server_address, 
             server_port, 
             server_name, 
-            schema, 
+            # schema, 
+            password_method, 
+            password_access_key, 
+            password_secret_key, 
+            password_endpoint_url, 
+            password_region_name, 
+            password_password_path, 
             user_name, 
             secret_key
         )

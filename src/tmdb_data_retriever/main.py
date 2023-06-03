@@ -444,7 +444,8 @@ def get_missing_title_cast(adult_content_flag=None, row_limit=None):
 
 #%%
 os.environ['PYDEVD_WARN_EVALUATION_TIMEOUT'] = '2000'
-run_from_command_line = sys.stdin.isatty()
+# run_from_command_line = sys.stdin.isatty()
+run_from_command_line = os.getenv("PYTHON_ISATTY", "True").lower() == "true" and sys.stdin.isatty()
 
 current_dir = os.getcwd()
 # project_dir = current_dir
@@ -458,17 +459,17 @@ output_file_config_path = config_path / "output_files_config.ini"
 (
     output_path, 
     images_path, 
-    log_file_path, 
-    password_method, 
-    password_access_key, 
-    password_secret_key, 
-    password_endpoint_url, 
-    password_region_name, 
-    password_password_path, 
-    read_chunk_size, 
-    archive_flag, 
-    logging_flag, 
-    log_archive_expire_days, 
+    # log_file_path, 
+    # password_method, 
+    # password_access_key, 
+    # password_secret_key, 
+    # password_endpoint_url, 
+    # password_region_name, 
+    # password_password_path, 
+    # read_chunk_size, 
+    # archive_flag, 
+    # logging_flag, 
+    # log_archive_expire_days, 
     global_original_language, 
     global_adult_content_flag
     ) = conn.read_app_config_settings(app_config_path)
@@ -482,35 +483,54 @@ db_target_config = 'target_connection'
     server_address, 
     server_port, 
     database_name, 
-    schema, 
-    user_name, 
-    secret_key
+    # schema, 
+    db_password_method, 
+    db_password_access_key, 
+    db_password_secret_key, 
+    db_password_endpoint_url, 
+    db_password_region_name, 
+    db_password_password_path, 
+    db_user_name, 
+    db_secret_key
     ) = conn.read_connection_config_settings(connection_config_path, db_target_config)
-db_password = pw.get_password(password_method, secret_key, account_name=user_name, access_key=password_access_key, secret_key=password_secret_key, endpoint_url=password_endpoint_url, region_name=password_region_name, password_path=password_password_path)
 
-(
-    connect_type, 
-    server_address, 
-    server_port, 
-    database_name, 
-    schema, 
-    user_name, 
-    secret_key
-    ) = conn.read_connection_config_settings(connection_config_path, db_target_config)
-engine = build_engine(connect_type, server_address, server_port, database_name, user_name, db_password)#, schema)
+try:
+    db_password = pw.get_password(
+        db_password_method, 
+        password_key=db_secret_key, 
+        account_name=db_user_name, 
+        access_key=db_password_access_key, 
+        secret_key=db_password_secret_key, 
+        endpoint_url=db_password_endpoint_url, 
+        region_name=db_password_region_name, 
+        password_path=db_password_password_path)
+    
+    engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
+except Exception as e:
+    engine = None
 
 api_source_config = 'tmdb_api_connection'
 (
     api_password_method, 
-    password_access_key, 
-    password_secret_key, 
-    password_endpoint_url, 
-    password_region_name, 
-    password_password_path, 
+    api_password_access_key, 
+    api_password_secret_key, 
+    api_password_endpoint_url, 
+    api_password_region_name, 
+    api_password_password_path, 
     api_user_name, 
     api_secret_key
     ) = conn.read_connection_config_settings(connection_config_path, api_source_config)
-api_key = pw.get_password(api_password_method, password_key=api_secret_key, account_name=api_user_name)
+# api_key = pw.get_password(api_password_method, password_key=api_secret_key, account_name=api_user_name)
+
+api_key = pw.get_password(
+    api_password_method, 
+    password_key=api_secret_key, 
+    account_name=api_user_name, 
+    access_key=api_password_access_key, 
+    secret_key=api_password_secret_key, 
+    endpoint_url=api_password_endpoint_url, 
+    region_name=api_password_region_name, 
+    password_path=api_password_password_path)
 
 (
     loaded_titles_sql, 
@@ -615,6 +635,7 @@ if __name__ == '__main__':
             images_path, 
             output_title_images_flag)
 
+        # print(local_db.functioning_engine_message)
         display_missing_counts(local_db)
 
         # get_movies_by_search_terms(original_language='en', skip_loaded_titles=True)#, row_limit=12)
