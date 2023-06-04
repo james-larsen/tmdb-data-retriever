@@ -1,8 +1,11 @@
 #%%
 import os
 import requests
+import json
+import gzip
 import pandas as pd
 # from sqlalchemy import text
+import datetime
 import time
 import utils.misc_utils as misc
 
@@ -71,6 +74,30 @@ class PersonData:
             df = pd.DataFrame()
         
         return df
+
+    def get_full_person_list(self):
+        todays_date = datetime.datetime.now().strftime("%m_%d_%Y")
+        url = f'http://files.tmdb.org/p/exports/person_ids_{todays_date}.json.gz'
+        data = []
+        
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with gzip.open(response.raw, "rt", encoding="utf-8") as file:
+                file_content = file.read()
+                json_objects = file_content.strip().split('\n')
+                for json_object in json_objects:
+                    obj = json.loads(json_object)
+                    data.append(obj)
+
+                df_persons = pd.DataFrame(data)
+                df_persons['as_of_date'] = datetime.date.today()
+                df_persons = cleanse_person_df(df_persons)
+                
+                # print(data)
+        else:
+            df_persons = pd.DataFrame()
+
+        return df_persons
 
     def get_title_cast_data_by_movie(self, tmdb_id_list, row_limit=None):
         """Retrieve cast data given a list of TMDB IDs"""
@@ -263,6 +290,13 @@ class PersonData:
         if self.output_person_aka_flag:
             misc.write_data_to_file(df_person_aka, output_path + os.sep + 'tmdb_person_aka', 'tmdb_person_aka', suffix)
 
+    def process_person_data_subset(self, df_persons, suffix):
+        """Accept a dataframe of data for all persons with limited fields"""
+        
+        output_path = self.output_path
+
+        misc.write_data_to_file(df_persons, output_path + os.sep + 'tmdb_person_full', 'tmdb_person_full', suffix)
+        
     # def get_title_cast(self, suffix, tmdb_id_list=[], row_limit=None):
 
     #     if not tmdb_id_list:

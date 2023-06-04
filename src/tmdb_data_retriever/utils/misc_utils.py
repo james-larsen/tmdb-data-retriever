@@ -71,6 +71,7 @@ def read_sql_queries(sql_queries_path):
     loaded_title_images_sql = sql_queries.get("loaded_title_images_sql")
     favorite_persons_sql = sql_queries.get("favorite_persons_sql")
     search_terms_sql = sql_queries.get("search_terms_sql")
+    title_images_by_favorite_persons_sql = sql_queries.get("title_images_by_favorite_persons_sql")
     titles_missing_cast_sql = sql_queries.get("titles_missing_cast_sql")
     titles_missing_keywords_sql = sql_queries.get("titles_missing_keywords_sql")
     persons_missing_sql = sql_queries.get("persons_missing_sql")
@@ -82,6 +83,7 @@ def read_sql_queries(sql_queries_path):
         loaded_title_images_sql, 
         favorite_persons_sql, 
         search_terms_sql, 
+        title_images_by_favorite_persons_sql, 
         titles_missing_cast_sql, 
         titles_missing_keywords_sql, 
         persons_missing_sql

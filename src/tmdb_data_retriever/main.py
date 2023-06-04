@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import argparse
 import dateparser
+import datetime
 from nexus_utils.database_utils import build_engine
 from nexus_utils import password_utils as pw
 from nexus_utils import datetime_utils as dtu
@@ -37,7 +38,17 @@ def parse_command_run():
         'get_missing_persons': 'get_missing_persons',
         'gmp': 'get_missing_persons',
         'get_missing_title_cast': 'get_missing_title_cast',
-        'gmtc': 'get_missing_title_cast'
+        'gmtc': 'get_missing_title_cast',
+        'get_title_images_by_persons': 'get_title_images_by_persons',
+        'gtibp': 'get_title_images_by_persons',
+        'get_all_movies': 'get_all_movies',
+        'gam': 'get_all_movies',
+        'get_all_persons': 'get_all_persons',
+        'gap': 'get_all_persons',
+        'reconcile_movies_against_full_list': 'reconcile_movies_against_full_list',
+        'rmafl': 'reconcile_movies_against_full_list',
+        'reconcile_persons_against_full_list': 'reconcile_persons_against_full_list',
+        'rpafl': 'reconcile_persons_against_full_list'
     }
     
     parser.add_argument('function', choices=function_aliases.keys(), help='Function to call')
@@ -49,6 +60,9 @@ def parse_command_run():
     parser.add_argument('-pid', '--person_ids', nargs='+', type=int, help='List of person TMDB IDs')
     parser.add_argument('-rl', '--row_limit', type=int, help='Limit the number of rows returned')
     parser.add_argument('-tw', '--time_window', type=str, help='Time window for "Trending": Accepts "day" or "week"')
+    parser.add_argument('-b', '--download_backdrops', action='store_true', help='Download backdrop images, if available')
+    parser.add_argument('-p', '--download_posters', action='store_true', help='Download poster images, if available')
+    parser.add_argument('-l', '--download_logos', action='store_true', help='Download logo images, if available')
     
     # Determine if running from command line
     # run_from_command_line = sys.stdin.isatty()
@@ -57,15 +71,24 @@ def parse_command_run():
         args = parser.parse_args()
     else:
         # provide test values when developing / debugging
-        args = argparse.Namespace(
-            function='display_missing_counts'
-        )
+        # args = argparse.Namespace(
+        #     function='display_missing_counts'
+        # )
         # args = argparse.Namespace(
         #     function='get_movies_updated_yesterday',
         #     original_language='en',
         #     # min_runtime=30,
         #     adult_content_flag='o'
         # )
+        args = argparse.Namespace(
+            function='get_title_images_by_persons',
+            person_ids=[135660, 143070],
+            skip_loaded_titles=True,
+            adult_content_flag='o',
+            download_backdrops=True,
+            download_posters=True
+            
+        )
 
     # function = args.function
     function = function_aliases.get(args.function, args.function)
@@ -85,7 +108,10 @@ def parse_command_run():
                 adult_content_flag = 'only'
             else:
                 adult_content_flag = 'exclude'
-    skip_loaded_titles = getattr(args, 'skip_loaded_titles', None)
+    skip_loaded_titles = getattr(args, 'skip_loaded_titles', False)
+    backdrop_flag = getattr(args, 'download_backdrops', False)
+    poster_flag = getattr(args, 'download_posters', False)
+    logo_flag = getattr(args, 'download_logos', False)
     search_terms = getattr(args, 'search_terms', None)
     person_id_list = getattr(args, 'person_ids', None)
     row_limit = getattr(args, 'row_limit', None)
@@ -105,6 +131,7 @@ def parse_command_run():
         loaded_title_images_sql=loaded_title_images_sql,
         favorite_persons_sql=favorite_persons_sql,
         search_terms_sql=search_terms_sql,
+        title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
         titles_missing_cast_sql=titles_missing_cast_sql,
         titles_missing_keywords_sql=titles_missing_keywords_sql,
         persons_missing_sql=persons_missing_sql
@@ -173,6 +200,21 @@ def parse_command_run():
         print(f'Job Start: {current_time}')
         display_missing_counts(local_db)
         get_missing_title_cast(adult_content_flag=adult_content_flag, row_limit=row_limit)
+    elif function == 'get_title_images_by_persons':
+        print(f'Job Start: {current_time}')
+        get_title_images_by_persons(person_id_list=person_id_list, skip_loaded_titles=skip_loaded_titles, adult_content_flag=adult_content_flag, row_limit=row_limit, backdrop_flag=backdrop_flag, poster_flag=poster_flag, logo_flag=logo_flag)
+    elif function == 'get_all_movies':
+        print(f'Job Start: {current_time}')
+        get_all_movies()
+    elif function == 'get_all_persons':
+        print(f'Job Start: {current_time}')
+        get_all_persons()
+    elif function == 'reconcile_movies_against_full_list':
+        print(f'Job Start: {current_time}')
+        reconcile_movies_against_full_list()
+    elif function == 'reconcile_persons_against_full_list':
+        print(f'Job Start: {current_time}')
+        reconcile_persons_against_full_list()
     else:
         valid_function_values = set(function_aliases.values())
         # valid_function_values = set(function_aliases.keys())
@@ -194,16 +236,67 @@ def display_missing_counts(local_db):
     print(f'Missing Keywords:  {len(local_db.titles_missing_keywords):,}')
     print(f'Missing Persons:  {len(local_db.persons_missing):,}')
 
-def handle_missing_data(suffix):
+def get_all_movies():
     
-    if local_db.error_tmdb_id_list:
-        df_removed_titles = movie_data.check_title_exists(local_db.error_tmdb_id_list)
+    # suffix = datetime.datetime.now().strftime("%Y-%m-%d")
+    suffix = current_time_string
+    
+    df_titles = movie_data.get_full_movie_list()
+
+    if len(df_titles) > 0:
+        movie_data.process_title_data_subset(df_titles, suffix)
+
+def reconcile_movies_against_full_list():
+    
+    suffix = current_time_string
+    
+    df_titles = movie_data.get_full_movie_list()
+
+    missing_titles = [tmdb_id for tmdb_id in local_db.loaded_titles if tmdb_id not in df_titles['tmdb_id'].values]
+    missing_titles = [title for title in missing_titles if title not in local_db.loaded_titles_adult]
+
+    handle_missing_data(suffix, tmdb_id_list=missing_titles)
+
+def get_all_persons():
+    
+    # suffix = datetime.datetime.now().strftime("%Y-%m-%d")
+    suffix = current_time_string
+    
+    df_persons = person_data.get_full_person_list()
+
+    if len(df_persons) > 0:
+        person_data.process_person_data_subset(df_persons, suffix)
+
+def reconcile_persons_against_full_list():
+    
+    suffix = current_time_string
+    
+    df_persons = person_data.get_full_person_list()
+
+    missing_persons = [person_id for person_id in local_db.loaded_persons if person_id not in df_persons['person_id'].values]
+    missing_persons = [person for person in missing_persons if person not in local_db.loaded_persons_adult]
+
+    handle_missing_data(suffix, person_id_list=missing_persons)
+
+def handle_missing_data(suffix=None, tmdb_id_list=[], person_id_list=[]):
+    
+    if not suffix:
+        suffix = current_time_string
+    
+    if not tmdb_id_list:
+        tmdb_id_list = local_db.error_tmdb_id_list
+    
+    if tmdb_id_list:
+        df_removed_titles = movie_data.check_title_exists(tmdb_id_list)
 
         if len(df_removed_titles) > 0:
             movie_data.process_removed_titles(df_removed_titles, suffix)
     
-    if local_db.error_person_id_list:
-        df_removed_persons = person_data.check_person_exists(local_db.error_person_id_list)
+    if not person_id_list:
+        person_id_list = local_db.error_person_id_list
+    
+    if person_id_list:
+        df_removed_persons = person_data.check_person_exists(person_id_list)
 
         if len(df_removed_persons) > 0:
             person_data.process_removed_persons(df_removed_persons, suffix)
@@ -230,7 +323,7 @@ def get_movies_updated_yesterday(original_language=None, min_runtime=None, adult
     else:
         print('No New Titles')
 
-    handle_missing_data(suffix)
+    handle_missing_data()
 
 def get_movies_by_favorite_actor(person_id_list=[], adult_content_flag=None, skip_loaded_titles=True, row_limit=None):
     """Retrieve movies starring favorite actors.  If a list is not provided, will use local db values."""
@@ -333,7 +426,7 @@ def get_trending_movies(time_window=None, original_language=None, skip_loaded_ti
 
     handle_missing_data(suffix)
 
-def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=True, adult_content_flag=None, row_limit=None):
+def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=True, adult_content_flag=None, row_limit=None, backdrop_flag=False, poster_flag=False, logo_flag=False):
     # TESTED
     if not suffix:
         suffix = current_time_string
@@ -349,7 +442,7 @@ def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=
     # tmdb_id_list = [220030, 475176]
 
     if skip_loaded_titles:
-        ids_to_skip = local_db.loaded_titles
+        ids_to_skip = local_db.loaded_title_images
         tmdb_id_list = [item for item in tmdb_id_list if item not in ids_to_skip]
     else:
         ids_to_skip = []
@@ -357,8 +450,19 @@ def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=
     if row_limit and tmdb_id_list and len(tmdb_id_list) >= row_limit:
         tmdb_id_list = tmdb_id_list[:row_limit]
 
+    # If no image type arguments are given, retrieve all types
+    if backdrop_flag == False and poster_flag == False and logo_flag == False:
+        backdrop_flag, poster_flag, logo_flag = True
+    # else:
+    #     if backdrop_flag is None:
+    #         backdrop_flag = False
+    #     if poster_flag is None:
+    #         poster_flag = False
+    #     if logo_flag is None:
+    #         logo_flag = False
+    
     if tmdb_id_list:
-        df_images = image_data.get_image_data(tmdb_id_list, ids_to_skip)
+        df_images = image_data.get_image_data(tmdb_id_list, ids_to_skip, backdrop_flag, poster_flag, logo_flag)
 
         if len(df_images) > 0:
             image_data.process_images(df_images, suffix)
@@ -440,6 +544,10 @@ def get_missing_title_cast(adult_content_flag=None, row_limit=None):
         print('No missing title cast')
 
     handle_missing_data(suffix)
+
+def create_title_image_html(tmdb_id_list=[], html_path=None, html_name=None):
+    
+    image_data.create_title_image_html(tmdb_id_list=tmdb_id_list, html_path=html_path, html_name=html_name)
 
 
 #%%
@@ -539,6 +647,7 @@ api_key = pw.get_password(
     loaded_title_images_sql, 
     favorite_persons_sql, 
     search_terms_sql, 
+    title_images_by_favorite_persons_sql, 
     titles_missing_cast_sql, 
     titles_missing_keywords_sql, 
     persons_missing_sql
@@ -573,6 +682,56 @@ local_db = None
 movie_data = None
 person_data = None
 image_data = None
+
+# local_db = local_db_handler.LocalDB(
+#     engine,
+#     global_adult_content_flag,
+#     loaded_titles_sql=loaded_titles_sql,
+#     loaded_title_cast_sql=loaded_title_cast_sql,
+#     loaded_persons_sql=loaded_persons_sql,
+#     loaded_title_images_sql=loaded_title_images_sql,
+#     favorite_persons_sql=favorite_persons_sql,
+#     search_terms_sql=search_terms_sql,
+#     title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
+#     titles_missing_cast_sql=titles_missing_cast_sql,
+#     titles_missing_keywords_sql=titles_missing_keywords_sql,
+#     persons_missing_sql=persons_missing_sql
+# )
+# # print(len(local_db.loaded_titles))
+# movie_data = movie_handler.MovieData(
+#     api_key, 
+#     local_db, 
+#     output_path, 
+#     output_titles_flag, 
+#     output_title_genres_flag, 
+#     output_genres_flag, 
+#     output_title_spoken_languages_flag, 
+#     output_spoken_languages_flag, 
+#     output_title_production_countries_flag, 
+#     output_production_countries_flag, 
+#     output_title_production_companies_flag, 
+#     output_production_companies_flag, 
+#     output_title_collections_flag, 
+#     output_collections_flag, 
+#     output_title_keywords_flag, 
+#     output_keywords_flag, 
+#     output_title_removed_flag
+# )
+# person_data = person_handler.PersonData(
+#     api_key, 
+#     local_db, 
+#     output_path, 
+#     output_persons_flag, 
+#     output_person_aka_flag, 
+#     output_title_cast_flag, 
+#     output_person_removed_flag)
+# image_data = image_handler.ImageData(
+#     api_key, 
+#     local_db, 
+#     output_path, 
+#     images_path, 
+#     output_title_images_flag)
+
 #%%
 
 if __name__ == '__main__':
@@ -596,6 +755,7 @@ if __name__ == '__main__':
             loaded_title_images_sql=loaded_title_images_sql,
             favorite_persons_sql=favorite_persons_sql,
             search_terms_sql=search_terms_sql,
+            title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
             titles_missing_cast_sql=titles_missing_cast_sql,
             titles_missing_keywords_sql=titles_missing_keywords_sql,
             persons_missing_sql=persons_missing_sql
@@ -635,7 +795,13 @@ if __name__ == '__main__':
             images_path, 
             output_title_images_flag)
 
+        # get_all_movies()
+        # get_all_persons()
+        # reconcile_movies_against_full_list()
+        # reconcile_persons_against_full_list()
+        
         # print(local_db.functioning_engine_message)
+        # create_title_image_html()
         display_missing_counts(local_db)
 
         # get_movies_by_search_terms(original_language='en', skip_loaded_titles=True)#, row_limit=12)

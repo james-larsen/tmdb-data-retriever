@@ -1,9 +1,12 @@
 #%%
 import os
 import requests
+import json
+import gzip
 import pandas as pd
 # from sqlalchemy import text
 import dateparser
+import datetime
 import time
 import utils.misc_utils as misc
 
@@ -92,6 +95,30 @@ class MovieData:
             df = pd.DataFrame()
         
         return df
+
+    def get_full_movie_list(self):
+        todays_date = datetime.datetime.now().strftime("%m_%d_%Y")
+        url = f'http://files.tmdb.org/p/exports/movie_ids_{todays_date}.json.gz'
+        data = []
+        
+        response = requests.get(url, stream=True)
+        if response.status_code == 200:
+            with gzip.open(response.raw, "rt", encoding="utf-8") as file:
+                file_content = file.read()
+                json_objects = file_content.strip().split('\n')
+                for json_object in json_objects:
+                    obj = json.loads(json_object)
+                    data.append(obj)
+
+                df_titles = pd.DataFrame(data)
+                df_titles['as_of_date'] = datetime.date.today()
+                df_titles = cleanse_title_df(df_titles)
+                
+                # print(data)
+        else:
+            df_titles = pd.DataFrame()
+
+        return df_titles
 
     def get_movie_discover_data(self, movie_date=None, ids_to_skip=[], original_language=None, adult_content_flag='exclude', include_video=False, row_limit=1_000_000_000):
         
@@ -590,6 +617,13 @@ class MovieData:
         if self.output_collections_flag:
             misc.write_data_to_file(df_collection, output_path + os.sep + 'tmdb_collection', 'tmdb_collection', suffix)
 
+    def process_title_data_subset(self, df_titles, suffix):
+        """Accept a dataframe of data for all titles with limited fields"""
+        
+        output_path = self.output_path
+
+        misc.write_data_to_file(df_titles, output_path + os.sep + 'tmdb_title_full', 'tmdb_title_full', suffix)
+        
     def get_title_keyword_data(self, tmdb_id_list, row_limit=None):
         """Retrieve film keywords given a list of TMDB IDs"""
         # global api_key

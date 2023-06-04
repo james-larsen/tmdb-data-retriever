@@ -15,6 +15,7 @@ class LocalDB:
             loaded_title_images_sql=None, 
             favorite_persons_sql=None, 
             search_terms_sql=None, 
+            title_images_by_favorite_persons_sql=None,
             titles_missing_cast_sql=None, 
             titles_missing_keywords_sql=None, 
             persons_missing_sql=None
@@ -59,6 +60,9 @@ class LocalDB:
         if search_terms_sql:
             self.search_terms_sql = search_terms_sql
 
+        if title_images_by_favorite_persons_sql:
+            self.title_images_by_favorite_persons_sql = title_images_by_favorite_persons_sql
+
         if titles_missing_cast_sql:
             self.titles_missing_cast_sql = titles_missing_cast_sql
 
@@ -70,16 +74,22 @@ class LocalDB:
         
         self._loaded_titles_checked_flag = False
         self._loaded_titles = []
+        self._loaded_titles_adult_checked_flag = False
+        self._loaded_titles_adult = []
         self._loaded_title_cast_checked_flag = False
         self._loaded_title_cast = []
         self._loaded_persons_checked_flag = False
         self._loaded_persons = []
+        self._loaded_persons_adult_checked_flag = False
+        self._loaded_persons_adult = []
         self._loaded_title_images_checked_flag = False
         self._loaded_title_images = []
         self._favorite_persons_checked_flag = False
         self._favorite_persons = []
         self._search_terms_checked_flag = False
         self._search_terms = []
+        self._title_images_by_favorite_persons_checked_flag = False
+        self._title_images_by_favorite_persons = pd.DataFrame()
         self._titles_missing_cast_checked_flag = False
         self._titles_missing_cast = []
         self._titles_missing_keywords_checked_flag = False
@@ -90,11 +100,14 @@ class LocalDB:
         if not functioning_engine:
             print(self._engine_status)
             self._loaded_titles_checked_flag = True
+            self._loaded_titles_adult_checked_flag = True
             self._loaded_title_cast_checked_flag = True
             self._loaded_persons_checked_flag = True
+            self._loaded_persons_adult_checked_flag = True
             self._loaded_title_images_checked_flag = True
             self._favorite_persons_checked_flag = True
             self._search_terms_checked_flag = True
+            self._title_images_by_favorite_persons_checked_flag = True
             self._titles_missing_cast_checked_flag = True
             self._titles_missing_keywords_checked_flag = True
             self._persons_missing_checked_flag = True
@@ -121,7 +134,7 @@ class LocalDB:
                     self._loaded_titles_checked_flag = True
                     
                     if not df.empty:
-                        df.columns = ['tmdb_id']
+                        df.columns = ['tmdb_id', 'adult_flag']
                         self._loaded_titles = df['tmdb_id'].tolist()
                     else:
                         self._loaded_titles = []
@@ -132,6 +145,36 @@ class LocalDB:
                 self._loaded_titles = []
 
         return self._loaded_titles
+
+    @property
+    def loaded_titles_adult(self):#, select_query=None):
+        """Retrieve all TMDB IDs for adult titles already loaded"""
+
+        if not self._loaded_titles_adult_checked_flag:
+            if self.loaded_titles_sql:
+                select_query = self.loaded_titles_sql
+                    
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('loaded_titles: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
+
+                    self._loaded_titles_adult_checked_flag = True
+                    
+                    if not df.empty:
+                        df.columns = ['tmdb_id', 'adult_flag']
+                        df_filtered = df[df['adult_flag'] == 'T']
+                        self._loaded_titles_adult = df_filtered['tmdb_id'].tolist()
+                    else:
+                        self._loaded_titles_adult = []
+                except Exception as e:
+                    self._loaded_titles_adult_checked_flag = True
+                    self._loaded_titles_adult = []
+            else:
+                self._loaded_titles_adult = []
+
+        return self._loaded_titles_adult
 
     @property
     def loaded_title_cast(self):#, select_query=None):
@@ -179,7 +222,7 @@ class LocalDB:
                     self._loaded_persons_checked_flag = True
                     
                     if not df.empty:
-                        df.columns = ['person_id']
+                        df.columns = ['person_id', 'adult_flag']
                         self._loaded_persons = df['person_id'].tolist()
                     else:
                         self._loaded_persons = []
@@ -190,6 +233,36 @@ class LocalDB:
                 self._loaded_persons = []
 
         return self._loaded_persons
+
+    @property
+    def loaded_persons_adult(self):#, select_query=None):
+        """Retrieve all Person IDs already loaded"""
+
+        if not self._loaded_persons_adult_checked_flag:
+            if self.loaded_persons_sql:
+                select_query = self.loaded_persons_sql
+                
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('loaded_persons: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
+
+                    self._loaded_persons_adult_checked_flag = True
+                    
+                    if not df.empty:
+                        df.columns = ['person_id', 'adult_flag']
+                        df_filtered = df[df['adult_flag'] == 'T']
+                        self._loaded_persons_adult = df_filtered['person_id'].tolist()
+                    else:
+                        self._loaded_persons_adult = []
+                except Exception as e:
+                    self._loaded_persons_adult_checked_flag = True
+                    self._loaded_persons_adult = []
+            else:
+                self._loaded_persons_adult = []
+
+        return self._loaded_persons_adult
 
     @property
     def loaded_title_images(self):#, select_query=None):
@@ -283,6 +356,36 @@ class LocalDB:
                 self._search_terms = []
 
         return self._search_terms
+
+    @property
+    def title_images_by_favorite_persons(self):#, select_query=None):
+        """Retrieve title images by favorite persons"""
+
+        if not self._title_images_by_favorite_persons_checked_flag:
+            if self.title_images_by_favorite_persons_sql:
+                select_query = self.title_images_by_favorite_persons_sql
+                
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('title_images_by_favorite_persons: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
+                        # df.columns = ['']
+
+                    self._title_images_by_favorite_persons_checked_flag = True
+
+                    if not df.empty:
+                        # df.columns = ['']
+                        self._title_images_by_favorite_persons = df
+                    else:
+                        self._title_images_by_favorite_persons = df = pd.DataFrame()
+                except Exception as e:
+                    self._title_images_by_favorite_persons_checked_flag = True
+                    self._title_images_by_favorite_persons = pd.DataFrame()
+            else:
+                self._title_images_by_favorite_persons = pd.DataFrame()
+
+        return self._title_images_by_favorite_persons
 
     @property
     def titles_missing_cast(self):#, select_query=None):

@@ -196,6 +196,7 @@ List of already loaded persons
 
 **Expected Select Output:**
 * person_id (int)
+* adult_flag (str: "T" or "F")
 
 ---
 
@@ -223,6 +224,7 @@ List of already loaded titles
 
 **Expected Select Output:**
 * tmdb_id (int)
+* adult_flag (str: "T" or "F")
 
 ---
 
@@ -317,6 +319,10 @@ The application uses a number of function arguments with optional flags.  The fl
 * get_missing_title_cast (gmtc): Retrieve cast linkages for titles without any
     * --adult_content_flag
     * --row_limit
+* get_all_movies (gam): Downloads the daily full movie list with a subset of fields
+* get_all_persons (gap): Downloads the daily full person list with a subset of fields
+* reconcile_movies_against_full_list (rmafl): Checks the currently loaded list of titles against today's full list to identify removed titles.  Note that the daily lists do not contain adult content, so if your data does, ensure "loaded_titles_sql" is configured properly to not trigger false positives as removed titles
+* reconcile_persons_against_full_list (rpafl): Checks the currently loaded list of persons against today's full list to identify removed persons.  Note that the daily lists do not contain adult content, so if your data does, ensure "loaded_persons_sql" is configured properly to not trigger false positives as removed persons
 
 ### Example Usage
 ```python
