@@ -8,9 +8,11 @@ import pandas as pd
 import dateparser
 import datetime
 import time
-import utils.misc_utils as misc
+# import utils.misc_utils as misc
+from src.tmdb_data_retriever.utils import misc_utils as misc
 
-    
+#%%
+
 def cleanse_title_df(df):
 
     # df = df.applymap(lambda x: x.replace('\r\n', ' | ') if isinstance(x, str) else x)
@@ -596,6 +598,9 @@ class MovieData:
 
         if self.output_titles_flag:
             misc.write_data_to_file(df_titles, output_path + os.sep + 'tmdb_title', 'tmdb_title', suffix)
+            # Update loaded titles list with tmdb_ids being extracted
+            self.local_db.loaded_titles = df_titles['tmdb_id'].tolist()
+            self.local_db.loaded_titles_adult = df_titles[df_titles['adult'] == True]['tmdb_id'].tolist()
         if self.output_title_genres_flag:
             misc.write_data_to_file(df_title_genre, output_path + os.sep + 'tmdb_title_genre', 'tmdb_title_genre', suffix)
         if self.output_genres_flag:

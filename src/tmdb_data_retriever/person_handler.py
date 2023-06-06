@@ -7,8 +7,10 @@ import pandas as pd
 # from sqlalchemy import text
 import datetime
 import time
-import utils.misc_utils as misc
+# import utils.misc_utils as misc
+from src.tmdb_data_retriever.utils import misc_utils as misc
 
+#%%
 
 def cleanse_person_df(df):
 
@@ -184,7 +186,8 @@ class PersonData:
             'language': 'en-US'
         }
 
-        print('Retrieving titles by person')
+        if len(person_id_list) > 1:
+            print('Retrieving titles by person')
 
         for i, person_id in enumerate(person_id_list):
             url = f'https://api.themoviedb.org/3/person/{person_id}/movie_credits'
@@ -233,7 +236,8 @@ class PersonData:
             'language': 'en-US'
         }
 
-        print('Retrieving person data')
+        if len(person_id_list) > 1:
+            print('Retrieving person data')
 
         for i, person_id in enumerate(person_id_list):
             url = f'https://api.themoviedb.org/3/person/{person_id}'
@@ -287,6 +291,9 @@ class PersonData:
 
         if self.output_persons_flag:
             misc.write_data_to_file(df_person, output_path + os.sep + 'tmdb_person', 'tmdb_person', suffix)
+            # Update loaded persons list with person_ids being extracted
+            self.local_db.loaded_persons = df_person['person_id'].tolist()
+            self.local_db.loaded_persons_adult = df_person[df_person['adult'] == True]['person_id'].tolist()
         if self.output_person_aka_flag:
             misc.write_data_to_file(df_person_aka, output_path + os.sep + 'tmdb_person_aka', 'tmdb_person_aka', suffix)
 

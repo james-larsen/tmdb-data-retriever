@@ -5,11 +5,14 @@ from pathlib import Path
 import argparse
 import dateparser
 import datetime
+import inspect
 from nexus_utils.database_utils import build_engine
 from nexus_utils import password_utils as pw
 from nexus_utils import datetime_utils as dtu
-import utils.connection_utils as conn
-import utils.misc_utils as misc
+# import utils.connection_utils as conn
+from src.tmdb_data_retriever.utils import connection_utils as conn
+# import utils.misc_utils as misc
+from src.tmdb_data_retriever.utils import misc_utils as misc
 
 #%%
 
@@ -415,7 +418,7 @@ def get_trending_movies(time_window=None, original_language=None, skip_loaded_ti
     tmdb_id_list = movie_data.get_trending_movie_ids(time_window, ids_to_skip=ids_to_skip, original_language=original_language, row_limit=row_limit)
 
     if tmdb_id_list:
-        df_titles = movie_data.get_title_data(tmdb_id_list, original_language='en')
+        df_titles = movie_data.get_title_data(tmdb_id_list, original_language=original_language)
         
         if len(df_titles) > 0:
             movie_data.process_title_data(df_titles, suffix)
@@ -466,6 +469,11 @@ def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=
 
         if len(df_images) > 0:
             image_data.process_images(df_images, suffix)
+            missing_tmdb_ids = [tmdb_id for tmdb_id in df_images['tmdb_id'] if tmdb_id not in local_db.loaded_titles]
+            if len(missing_tmdb_ids) > 0:
+                df_titles = movie_data.get_title_data(missing_tmdb_ids)
+                if len(df_titles) > 0:
+                    movie_data.process_title_data(df_titles, suffix=current_time_string)
         else:
             print('No images to process')
     else:
@@ -473,7 +481,7 @@ def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=
 
     handle_missing_data(suffix)
 
-def get_missing_title_keywords(adult_content_flag=None, row_limit=None):
+def get_missing_title_keywords(tmdb_id_list=[], adult_content_flag=None, row_limit=None):
     
     suffix = current_time_string
 
@@ -483,7 +491,8 @@ def get_missing_title_keywords(adult_content_flag=None, row_limit=None):
         else:
             adult_content_flag = 'exclude'
     
-    tmdb_id_list = local_db.titles_missing_keywords
+    if not tmdb_id_list:
+        tmdb_id_list = local_db.titles_missing_keywords
 
     if tmdb_id_list:
         df_title_keywords = movie_data.get_title_keyword_data(tmdb_id_list, row_limit=row_limit)
@@ -497,7 +506,7 @@ def get_missing_title_keywords(adult_content_flag=None, row_limit=None):
 
     handle_missing_data(suffix)
 
-def get_missing_persons(adult_content_flag=None, row_limit=None):
+def get_missing_persons(person_id_list=[], adult_content_flag=None, row_limit=None):
     
     suffix = current_time_string
 
@@ -507,7 +516,8 @@ def get_missing_persons(adult_content_flag=None, row_limit=None):
         else:
             adult_content_flag = 'exclude'
 
-    person_id_list = local_db.persons_missing
+    if not person_id_list:
+        person_id_list = local_db.persons_missing
 
     if person_id_list:
         df_person = person_data.get_person_data(person_id_list, row_limit=row_limit)
@@ -521,7 +531,7 @@ def get_missing_persons(adult_content_flag=None, row_limit=None):
 
     handle_missing_data(suffix)
 
-def get_missing_title_cast(adult_content_flag=None, row_limit=None):
+def get_missing_title_cast(tmdb_id_list=[], adult_content_flag=None, row_limit=None):
     
     suffix = current_time_string
 
@@ -531,7 +541,8 @@ def get_missing_title_cast(adult_content_flag=None, row_limit=None):
         else:
             adult_content_flag = 'exclude'
     
-    tmdb_id_list = local_db.titles_missing_cast
+    if not tmdb_id_list:
+        tmdb_id_list = local_db.titles_missing_cast
 
     if tmdb_id_list:
         df_title_cast = person_data.get_title_cast_data_by_movie(tmdb_id_list, row_limit=row_limit)
@@ -545,9 +556,24 @@ def get_missing_title_cast(adult_content_flag=None, row_limit=None):
 
     handle_missing_data(suffix)
 
-def create_title_image_html(tmdb_id_list=[], html_path=None, html_name=None):
+def create_title_image_html(tmdb_id_list=[], html_path=None, html_name=None, backdrop_required_flag=False):
     
-    image_data.create_title_image_html(tmdb_id_list=tmdb_id_list, html_path=html_path, html_name=html_name)
+    image_data.create_title_image_html(tmdb_id_list=tmdb_id_list, html_path=html_path, html_name=html_name, backdrop_required_flag=backdrop_required_flag)
+
+def create_image_html_by_person(person_id_list, adult_content_flag=None, backdrop_required_flag=False):
+    
+    if not adult_content_flag:
+        adult_content_flag = global_adult_content_flag
+    
+    for person in person_id_list:
+        single_person_id_list = [person]
+        person_details = person_data.get_person_data(single_person_id_list)
+        person_name = str(person_details['person_name'].str.lower().str.replace(" ", "_").iat[0])
+        tmdb_id_list = person_data.get_titles_by_person(single_person_id_list, adult_content_flag=adult_content_flag)
+    
+        # df_title_images = local_db.title_images_by_favorite_persons[local_db.title_images_by_favorite_persons['tmdb_id'].isin(tmdb_id_list)]
+
+        create_title_image_html(tmdb_id_list, html_name=(person_name + '.html'), backdrop_required_flag=backdrop_required_flag)
 
 
 #%%
@@ -555,14 +581,24 @@ os.environ['PYDEVD_WARN_EVALUATION_TIMEOUT'] = '2000'
 # run_from_command_line = sys.stdin.isatty()
 run_from_command_line = os.getenv("PYTHON_ISATTY", "True").lower() == "true" and sys.stdin.isatty()
 
-current_dir = os.getcwd()
+# current_dir = os.getcwd()
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+# print(current_dir)
 # project_dir = current_dir
 
-config_path = Path(current_dir).parent.parent / 'config'
+s3_config_path = Path(current_dir).parent.parent / 'data' / 'Config'
+config_path = None
+if s3_config_path.exists():
+    ini_files = [entry for entry in os.scandir(s3_config_path) if entry.is_file() and entry.name.endswith('.ini')]
+    if len(ini_files) >= 3:
+        config_path = Path(current_dir).parent.parent / 'data' / 'Config'
+if not config_path:
+    config_path = Path(current_dir).parent.parent / 'config'
 app_config_path = config_path / "app_config.ini"
 connection_config_path = config_path / "connections_config.ini"
-sql_queries_config_path = config_path / "sql_queries"
 output_file_config_path = config_path / "output_files_config.ini"
+sql_queries_config_path = config_path / "sql_queries"
 
 (
     output_path, 
@@ -602,7 +638,12 @@ db_target_config = 'target_connection'
     db_secret_key
     ) = conn.read_connection_config_settings(connection_config_path, db_target_config)
 
-try:
+db_password = None
+
+if 'TARGET_DB_PASSWORD' in os.environ:
+    db_password = os.environ['TARGET_DB_PASSWORD']
+
+if not db_password:
     db_password = pw.get_password(
         db_password_method, 
         password_key=db_secret_key, 
@@ -612,7 +653,8 @@ try:
         endpoint_url=db_password_endpoint_url, 
         region_name=db_password_region_name, 
         password_path=db_password_password_path)
-    
+
+try:
     engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
 except Exception as e:
     engine = None
@@ -630,15 +672,21 @@ api_source_config = 'tmdb_api_connection'
     ) = conn.read_connection_config_settings(connection_config_path, api_source_config)
 # api_key = pw.get_password(api_password_method, password_key=api_secret_key, account_name=api_user_name)
 
-api_key = pw.get_password(
-    api_password_method, 
-    password_key=api_secret_key, 
-    account_name=api_user_name, 
-    access_key=api_password_access_key, 
-    secret_key=api_password_secret_key, 
-    endpoint_url=api_password_endpoint_url, 
-    region_name=api_password_region_name, 
-    password_path=api_password_password_path)
+api_key = None
+
+if 'TMDB_API_KEY' in os.environ:
+    api_key = os.environ['TMDB_API_KEY']
+
+if not api_key:
+    api_key = pw.get_password(
+        api_password_method, 
+        password_key=api_secret_key, 
+        account_name=api_user_name, 
+        access_key=api_password_access_key, 
+        secret_key=api_password_secret_key, 
+        endpoint_url=api_password_endpoint_url, 
+        region_name=api_password_region_name, 
+        password_path=api_password_password_path)
 
 (
     loaded_titles_sql, 
@@ -799,10 +847,15 @@ if __name__ == '__main__':
         # get_all_persons()
         # reconcile_movies_against_full_list()
         # reconcile_persons_against_full_list()
-        
+
+        # get_title_images_by_persons(local_db.favorite_persons, suffix=None, skip_loaded_titles=True, adult_content_flag='only', row_limit=None, backdrop_flag=True, poster_flag=True, logo_flag=True)
+        # get_title_images_by_persons([], suffix=None, skip_loaded_titles=True, adult_content_flag='only', row_limit=None, backdrop_flag=True, poster_flag=True, logo_flag=True)
+        # create_image_html_by_person(local_db.favorite_persons)
+        # create_image_html_by_person(local_db.favorite_persons, backdrop_required_flag=True)
+
         # print(local_db.functioning_engine_message)
         # create_title_image_html()
-        display_missing_counts(local_db)
+        # display_missing_counts(local_db)
 
         # get_movies_by_search_terms(original_language='en', skip_loaded_titles=True)#, row_limit=12)
         # get_trending_movies(time_window='week', original_language='en', skip_loaded_titles=True, row_limit=2_000)
@@ -819,7 +872,7 @@ if __name__ == '__main__':
 
         # get_missing_persons(current_time_string, [1535848, 1426252, 135660, 143070, 136331, 76575, 932319, 1056772, 2953862, 997483, 591313])
         # get_missing_title_cast()
-        get_missing_persons()
+        # get_missing_persons()
         # get_missing_title_keywords()
 
         # tmdb_list = person_data.get_titles_by_person([1535848, 1426252, 135660, 143070, 136331, 76575, 932319, 1056772, 2953862, 997483, 591313], local_db.loaded_title_cast)
@@ -830,6 +883,9 @@ if __name__ == '__main__':
 
         # get_missing_title_cast(row_limit=100)
         # get_missing_persons(row_limit=1_000)
+        # print(len(local_db.loaded_persons))
+        # get_missing_persons([1158])
+        # print(len(local_db.loaded_persons))
 
         # get_missing_title_keywords(row_limit=200)
         # get_missing_persons()

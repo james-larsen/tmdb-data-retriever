@@ -4,9 +4,10 @@ import requests
 import pandas as pd
 # from sqlalchemy import text
 import time
-import utils.misc_utils as misc
+# import utils.misc_utils as misc
+from src.tmdb_data_retriever.utils import misc_utils as misc
 
-
+#%%
 class ImageData:
     def __init__(
             self, 
@@ -87,62 +88,68 @@ class ImageData:
 
         if self.output_title_images_flag:
             misc.write_data_to_file(df_images, output_path + os.sep + 'tmdb_title_image', 'tmdb_title_image', suffix)
+            # Update loaded title images list with tmdb_ids being extracted
+            self.local_db.loaded_title_images = df_images['tmdb_id'].tolist()
 
     def download_images(self, df_images):
 
         tmdb_ids = df_images['tmdb_id'].unique()
+        fully_processed = []
 
         images_processed = 0
 
-        print('Retrieving title imagess')
+        print('Retrieving title images')
 
-        for tmdb_id in tmdb_ids:
-        
-            # filtered_df_images = df_images[df_images['tmdb_id'] == your_tmdb_id].copy()
+        try:
+            for tmdb_id in tmdb_ids:
             
-            local_image_path = os.path.join(self.image_path, 'tmdb_id_' + str(tmdb_id))
-            
-            if not os.path.exists(local_image_path):
-                os.makedirs(local_image_path)
-
-            df_images_tmdb_id = df_images[df_images['tmdb_id'] == tmdb_id].copy()
-            available_image_types = df_images_tmdb_id['image_type'].unique()
-
-            for image_type in available_image_types:
-                local_image_path_subfolder = os.path.join(local_image_path, image_type)
+                local_image_path = os.path.join(self.image_path, 'tmdb_id_' + str(tmdb_id))
                 
-                if not os.path.exists(local_image_path_subfolder):
-                    os.makedirs(local_image_path_subfolder)
+                if not os.path.exists(local_image_path):
+                    os.makedirs(local_image_path)
 
-                image_num = 1
-                for index, image in df_images.iterrows():
-                    if image['tmdb_id'] == tmdb_id and image['image_type'] == image_type:
-                        tmdb_id = image['tmdb_id']
-                        file_path = image['file_path']
-                        local_file_name = str(tmdb_id) + '_' + image_type + '_' + str(image_num).zfill(2) + '_' + file_path[1:]
-                        local_file_path = os.path.join(local_image_path_subfolder, local_file_name)
+                df_images_tmdb_id = df_images[df_images['tmdb_id'] == tmdb_id].copy()
+                available_image_types = df_images_tmdb_id['image_type'].unique()
 
-                        url = f'https://www.themoviedb.org/t/p/original{file_path}'
-                        response = requests.get(url)
-                        if response.status_code == 200:
-                            with open(local_file_path, 'wb') as file:
-                                file.write(response.content)
-                            df_images.at[index, 'local_file_path'] = str(local_file_path)
-                            image_num += 1
-                            images_processed += 1
-                        else:
-                            print(f'URL: {url}\nResponse: {response.status_code}')
+                for image_type in available_image_types:
+                    local_image_path_subfolder = os.path.join(local_image_path, image_type)
+                    
+                    if not os.path.exists(local_image_path_subfolder):
+                        os.makedirs(local_image_path_subfolder)
 
-                        if images_processed % 10 == 0:
-                            print(f'Images processed: {images_processed} of {len(df_images)}')
-                            time.sleep(2)
+                    image_num = 1
+                    for index, image in df_images.iterrows():
+                        if image['tmdb_id'] == tmdb_id and image['image_type'] == image_type:
+                            # tmdb_id = image['tmdb_id']
+                            file_path = image['file_path']
+                            local_file_name = str(tmdb_id) + '_' + image_type + '_' + str(image_num).zfill(2) + '_' + file_path[1:]
+                            local_file_path = os.path.join(local_image_path_subfolder, local_file_name)
 
-    def create_title_image_html(self, tmdb_id_list=[], include_keywords=True, html_path=None, html_name=None):
+                            url = f'https://www.themoviedb.org/t/p/original{file_path}'
+                            response = requests.get(url)
+                            if response.status_code == 200:
+                                with open(local_file_path, 'wb') as file:
+                                    file.write(response.content)
+                                df_images.at[index, 'local_file_path'] = str(local_file_path)
+                                image_num += 1
+                                images_processed += 1
+                            else:
+                                print(f'URL: {url}\nResponse: {response.status_code}')
+
+                            if images_processed % 10 == 0:
+                                print(f'Images processed: {images_processed} of {len(df_images)}')
+                                time.sleep(2)
+                fully_processed.append(tmdb_id)
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")
+            df_images.drop(df_images[~df_images['tmdb_id'].isin(fully_processed)].index, inplace=True)
+
+    def create_title_image_html(self, tmdb_id_list=[], include_keywords=True, html_path=None, html_name=None, backdrop_required_flag=False):
 
         if not html_path:
             html_path = self.image_path
         
-        if not html_name or '.html' not in html_name:
+        if len(html_name) == 0 or '.html' not in html_name:
             html_name = 'index.html'
 
         df_title_images = self.local_db.title_images_by_favorite_persons.copy()
@@ -156,75 +163,80 @@ class ImageData:
             if not os.path.exists(file_path):
                 df_title_images.drop(index, inplace=True)
         
-        df_titles = df_title_images.loc[:, ['tmdb_id','title_name','has_backdrop','person_list','keyword_list']].copy()
-        df_titles = df_titles.drop_duplicates()
-        df_posters = df_title_images.loc[df_title_images['image_type'] == 'poster', ['tmdb_id', 'image_type', 'local_file_path']].copy()
-        df_posters = df_posters.drop_duplicates()
-        df_backdrops = df_title_images.loc[df_title_images['image_type'] == 'backdrop', ['tmdb_id', 'image_type', 'local_file_path']].copy()
-        df_backdrops = df_backdrops.drop_duplicates()
+        if backdrop_required_flag:
+            df_title_images = df_title_images[df_title_images['has_backdrop'] == 'Y']
+        
+        if len(df_title_images) > 0:
+            df_titles = df_title_images.loc[:, ['tmdb_id','title_name', 'release_date','has_backdrop','person_list','keyword_list']].copy()
+            df_titles = df_titles.drop_duplicates()
+            df_posters = df_title_images.loc[df_title_images['image_type'] == 'poster', ['tmdb_id', 'image_type', 'local_file_path']].copy()
+            df_posters = df_posters.drop_duplicates()
+            df_backdrops = df_title_images.loc[df_title_images['image_type'] == 'backdrop', ['tmdb_id', 'image_type', 'local_file_path']].copy()
+            df_backdrops = df_backdrops.drop_duplicates()
 
-        html_string = """
-        <html>
-            <head>
-                <title>TMDB Title Images</title>
-            </head>
-            <body>
-                <style>
-                    .poster-image {
-                        max-width: 300px;
-                        max-height: 300px;
-                        border: 1px solid black;
-                    }
-                    .backdrop-image {
-                        max-width: 1200px;
-                        border: 1px solid black;
-                    }
-                </style>
-                <h1>TMDB Title Images</h1>
-                <br><br>
-        """
-
-        for index, row in df_titles.iterrows():
-            tmdb_id = row['tmdb_id']
-            title_name = row['title_name']
-            person_list = row['person_list']
-            keyword_list = row['keyword_list']
-            poster_rows = df_posters.loc[df_posters['tmdb_id'] == tmdb_id].copy().reset_index(drop=True)
-            backdrop_rows = df_backdrops.loc[df_backdrops['tmdb_id'] == tmdb_id].copy().reset_index(drop=True)
-
-            html_string += f"""
-                <hr>
-                <h2>{title_name} (tmdb_id: <a href="https://www.themoviedb.org/movie/{tmdb_id}" target="_blank">{tmdb_id}</a>)</h2>
-                <b>Cast List: </b>
-                <br>
-                <b>{person_list}</b>
-                <br><br>
+            html_string = """
+            <html>
+                <head>
+                    <title>TMDB Title Images</title>
+                </head>
+                <body>
+                    <style>
+                        .poster-image {
+                            max-width: 300px;
+                            max-height: 300px;
+                            border: 1px solid black;
+                        }
+                        .backdrop-image {
+                            max-width: 1200px;
+                            border: 1px solid black;
+                        }
+                    </style>
+                    <h1>TMDB Title Images</h1>
+                    <br><br>
             """
 
-            if keyword_list and include_keywords:
+            for index, row in df_titles.iterrows():
+                tmdb_id = row['tmdb_id']
+                title_name = row['title_name']
+                release_date = row['release_date']
+                person_list = row['person_list']
+                keyword_list = row['keyword_list']
+                poster_rows = df_posters.loc[df_posters['tmdb_id'] == tmdb_id].copy().reset_index(drop=True)
+                backdrop_rows = df_backdrops.loc[df_backdrops['tmdb_id'] == tmdb_id].copy().reset_index(drop=True)
+
                 html_string += f"""
-                    <b>Keyword List:</b>
+                    <hr>
+                    <h2>{title_name} (tmdb_id: <a href="https://www.themoviedb.org/movie/{tmdb_id}" target="_blank">{tmdb_id}</a>) - ({release_date})</h2>
+                    <b>Cast List: </b>
                     <br>
-                    <b>{keyword_list}</b>
+                    <b>{person_list}</b>
                     <br><br>
                 """
 
-            if len(poster_rows) > 0:
-                poster_path = poster_rows['local_file_path'].iloc[0].replace(' ', '%20').replace('\\', '/')
-                html_string += f'<img src="file:///{poster_path}" alt="{tmdb_id} Poster"  class="poster-image">'
-
-            if len(backdrop_rows) > 0:
-                for backdrop_index, backdrop_row in enumerate(backdrop_rows.itertuples(), start=1):
-                    backdrop_path = backdrop_row.local_file_path.replace(' ', '%20').replace('\\', '/')
+                if keyword_list and include_keywords:
                     html_string += f"""
+                        <b>Keyword List:</b>
+                        <br>
+                        <b>{keyword_list}</b>
                         <br><br>
-                        <img src="file:///{backdrop_path}" alt="{tmdb_id} Backdrop {backdrop_index}"  class="backdrop-image">
                     """
 
-        html_string += """
-        </body>
-        </html>
-        """
+                if len(poster_rows) > 0:
+                    poster_path = poster_rows['local_file_path'].iloc[0].replace(' ', '%20').replace('\\', '/')
+                    html_string += f'<img src="file:///{poster_path}" alt="{tmdb_id} Poster"  class="poster-image">'
 
-        with open(html_path + '/' + html_name, "w") as file:
-            file.write(html_string)
+                if len(backdrop_rows) > 0:
+                    for backdrop_index, backdrop_row in enumerate(backdrop_rows.itertuples(), start=1):
+                        backdrop_path = backdrop_row.local_file_path.replace(' ', '%20').replace('\\', '/')
+                        html_string += f"""
+                            <br><br>
+                            <img src="file:///{backdrop_path}" alt="{tmdb_id} Backdrop {backdrop_index}"  class="backdrop-image">
+                        """
+
+            html_string += """
+            </body>
+            </html>
+            """
+
+            with open(html_path + '/' + html_name, "w") as file:
+                file.write(html_string)

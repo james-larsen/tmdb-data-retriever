@@ -24,30 +24,44 @@ You will need to acquire a free TMDB API key to use this application.  Details c
 
 ## Requirements
 
-python = "^3.8"
+pandas >=1.5.3, <2.0.0
 
-pandas = "^1.5.3"
+sqlalchemy >=2.0.4, <3.0.0
 
-sqlalchemy = "^2.0.4"
+psycopg2-binary >=2.9.5, <3.0.0
 
-psycopg2-binary = "2.9.5"
+configparser >=5.3.0, <6.0.0
 
-configparser = "^5.3.0"
+dateparser >=1.1.8, <2.0.0
 
-keyring = "^23.13.1"
+keyring >=23.13.1, <24.0.0
 
-nexus-utilities = "^0.5.3" # My custom utilities package
+nexus-utilities >=0.6.0, <1.0.0 # My custom utilities package
 
 ## Installation
 
 ```python
-pip3 install pandas
-pip3 install sqlalchemy
-pip3 install psycopg2-binary
-pip3 install configparser
-pip3 install keyring
-pip3 install nexus-utilities # My custom utilities package
+pip3 install pandas >=1.5.3,<2.0.0
+pip3 install sqlalchemy >=2.0.4,<3.0.0
+pip3 install psycopg2-binary >=2.9.5,<3.0.0
+pip3 install configparser >=5.3.0,<6.0.0
+pip3 install dateparser >=1.1.8,<2.0.0
+pip3 install keyring >=23.13.1,<24.0.0
+pip3 install nexus-utilities >=0.6.0,<1.0.0 # My custom utilities package
+
+OR
+
+# From the package root directory
+pip3 install -r requirements.txt
 ```
+
+From the package root:
+
+```python
+pip3 install .
+```
+
+**Note that this is needed so relative imports will function**
 
 ## Passwords
 

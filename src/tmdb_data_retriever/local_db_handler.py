@@ -146,6 +146,12 @@ class LocalDB:
 
         return self._loaded_titles
 
+    @loaded_titles.setter
+    def loaded_titles(self, loaded_titles_list):
+        """Update TMDB IDs already considered loaded"""
+
+        self._loaded_titles.extend([title for title in loaded_titles_list if title not in self._loaded_titles])
+
     @property
     def loaded_titles_adult(self):#, select_query=None):
         """Retrieve all TMDB IDs for adult titles already loaded"""
@@ -175,6 +181,12 @@ class LocalDB:
                 self._loaded_titles_adult = []
 
         return self._loaded_titles_adult
+
+    @loaded_titles_adult.setter
+    def loaded_titles_adult(self, loaded_titles_list):
+        """Update TMDB IDs already considered loaded"""
+
+        self._loaded_titles_adult.extend([title for title in loaded_titles_list if title not in self._loaded_titles_adult])
 
     @property
     def loaded_title_cast(self):#, select_query=None):
@@ -234,6 +246,12 @@ class LocalDB:
 
         return self._loaded_persons
 
+    @loaded_persons.setter
+    def loaded_persons(self, loaded_persons_list):
+        """Update Person IDs already considered loaded"""
+
+        self._loaded_persons.extend([person for person in loaded_persons_list if person not in self._loaded_persons])
+
     @property
     def loaded_persons_adult(self):#, select_query=None):
         """Retrieve all Person IDs already loaded"""
@@ -264,6 +282,12 @@ class LocalDB:
 
         return self._loaded_persons_adult
 
+    @loaded_persons_adult.setter
+    def loaded_persons_adult(self, loaded_persons_list):
+        """Update Person IDs already considered loaded"""
+
+        self._loaded_persons_adult.extend([person for person in loaded_persons_list if person not in self._loaded_persons_adult])
+
     @property
     def loaded_title_images(self):#, select_query=None):
         """Retrieve all TMDB IDs already loaded"""
@@ -292,6 +316,12 @@ class LocalDB:
                 self._loaded_title_images = []
 
         return self._loaded_title_images
+
+    @loaded_title_images.setter
+    def loaded_title_images(self, loaded_titles_list):
+        """Update TMDB IDs considered already having images loaded"""
+
+        self._loaded_title_images.extend([title for title in loaded_titles_list if title not in self._loaded_title_images])
 
     @property
     def favorite_persons(self):#, select_query=None):
