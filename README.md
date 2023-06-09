@@ -24,9 +24,15 @@ You will need to acquire a free TMDB API key to use this application.  Details c
 
 ## Requirements
 
+python > 3.8
+
 pandas >=1.5.3, <2.0.0
 
 sqlalchemy >=2.0.4, <3.0.0
+
+flask >=2.2.5, <3.0.0
+
+waitress >=2.1.2 ,<3.0.0
 
 psycopg2-binary >=2.9.5, <3.0.0
 
@@ -43,6 +49,8 @@ nexus-utilities >=0.6.0, <1.0.0 # My custom utilities package
 ```python
 pip3 install pandas >=1.5.3,<2.0.0
 pip3 install sqlalchemy >=2.0.4,<3.0.0
+pip3 install flask >=2.2.5,<3.0.0
+pip3 install waitress >=2.1.2,<3.0.0
 pip3 install psycopg2-binary >=2.9.5,<3.0.0
 pip3 install configparser >=5.3.0,<6.0.0
 pip3 install dateparser >=1.1.8,<2.0.0
@@ -73,6 +81,10 @@ If you do decide to use the keyring library, you will need to add entries using 
 keyring.set_password("{user_name}", "{secret_key}", "my_api_key")
 keyring.set_password("{user_name}", "{secret_key}", "my_db_password")
 ```
+
+Alternatively, if the below OS Environment variables are available, they will be used instead:
+ - NEXUS_TDR_TARGET_DB_PASSWORD
+ - NEXUS_TMDB_API_KEY
 
 ## App Configuration
 

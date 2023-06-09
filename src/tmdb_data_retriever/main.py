@@ -5,56 +5,201 @@ from pathlib import Path
 import argparse
 import dateparser
 import datetime
+from flask import Flask, request, make_response, jsonify
+import json
+from threading import Lock
 import inspect
 from nexus_utils.database_utils import build_engine
 from nexus_utils import password_utils as pw
 from nexus_utils import datetime_utils as dtu
+from nexus_utils import string_utils
 # import utils.connection_utils as conn
 from src.tmdb_data_retriever.utils import connection_utils as conn
 # import utils.misc_utils as misc
 from src.tmdb_data_retriever.utils import misc_utils as misc
+from src.tmdb_data_retriever import settings
 
 #%%
 
-def parse_command_run():
+# def test_request():
+#     import requests
+
+#     # Define the URL of the endpoint
+#     url = 'http://localhost:5000/trigger_function'
+
+#     # Define the payload
+#     payload = {
+#         'function_name': 'display_missing_counts'
+#     }
+
+#     # Send the POST request
+#     response = requests.post(url, json=payload)
+
+#     # Check the response status code
+#     if response.status_code == 200:
+#         print('Request successful')
+#     else:
+#         print(f'Request failed with status code: {response.status_code}')
+
+app = Flask(__name__)
+lock = Lock()
+
+def run_flask_app(host=None, port=None):
+    from waitress import serve
+
+    if not host:
+        host = 'localhost'
+
+    if not port:
+        port = 5002
+
+    print(f'Listening on {host}:{port}...')
+    serve(app, host=host, port=port)
+    # app.run(host=host, port=port)
+
+def build_api_response():
+    global api_result, api_error_flag, api_error_message
+
+    with app.app_context():
+        if api_error_flag:
+            if not api_result:
+                api_result = {}
+            response_data = {
+                'status': 'error',
+                'message': api_error_message,
+                'result': {}
+            }
+            api_response = make_response(jsonify(response_data), 400)
+        else:
+            response_data = {
+                'status': 'success',
+                'message': 'Completed successfully',
+                'result': api_result
+            }
+            api_response = make_response(jsonify(response_data), 200)
+
+        api_response.headers['Content-Type'] = 'application/json'
+        # Decode with: "json.loads(api_response.get_data(as_text=True))"
+        # Will be different when reading the results from another application
+
+        return api_response, api_error_flag
+
+common_function_aliases = {
+    'display_missing_counts': 'display_missing_counts',
+    'dmc': 'display_missing_counts',
+    'get_movies_updated_yesterday': 'get_movies_updated_yesterday',
+    'gmuy': 'get_movies_updated_yesterday',
+    'get_movies_by_favorite_actor': 'get_movies_by_favorite_actor',
+    'gmbfa': 'get_movies_by_favorite_actor',
+    'get_movies_by_search_terms': 'get_movies_by_search_terms',
+    'gmbst': 'get_movies_by_search_terms',
+    'get_trending_movies': 'get_trending_movies',
+    'gtm': 'get_trending_movies',
+    'get_missing_title_keywords': 'get_missing_title_keywords',
+    'gmtk': 'get_missing_title_keywords',
+    'get_missing_persons': 'get_missing_persons',
+    'gmp': 'get_missing_persons',
+    'get_missing_title_cast': 'get_missing_title_cast',
+    'gmtc': 'get_missing_title_cast',
+    'get_title_images_by_persons': 'get_title_images_by_persons',
+    'gtibp': 'get_title_images_by_persons',
+    'get_all_movies': 'get_all_movies',
+    'gam': 'get_all_movies',
+    'get_all_persons': 'get_all_persons',
+    'gap': 'get_all_persons',
+    'reconcile_movies_against_full_list': 'reconcile_movies_against_full_list',
+    'rmafl': 'reconcile_movies_against_full_list',
+    'reconcile_persons_against_full_list': 'reconcile_persons_against_full_list',
+    'rpafl': 'reconcile_persons_against_full_list'
+}
+
+api_function_aliases = {
+    
+}
+
+@app.route('/request', methods=['POST'])
+def trigger_function_from_api():
+
+    lock.acquire()
+
+    try:
+        per_run_initializations()
+
+        params = request.args.to_dict()
+
+        function_aliases = common_function_aliases.copy()
+        function_aliases.update(api_function_aliases)
+
+        # function = params.get('function_name')
+        kwargs = params.get('kwargs', {})
+        function = kwargs.get('function', None)
+
+        function_lookup = function_aliases.get(function, function)
+
+        if function and not function_lookup:
+            valid_function_values = set(function_aliases.values())
+            valid_functions_string = ''.join([f'\n--{value}' for value in valid_function_values])
+            print(f'Invalid function specified.  Valid values are:{valid_functions_string}')
+            return {'error': f'Unknown function: "{function}"'}, 400
+        elif function and function_lookup:
+            function = function_lookup
+
+        original_language = kwargs.get('original_language', None)
+        min_runtime = kwargs.get('min_runtime', None)
+        adult_content_flag = kwargs.get('adult_content_flag', None)
+        skip_loaded_titles = kwargs.get('skip_loaded_titles', False)
+        backdrop_flag = kwargs.get('download_backdrops', False)
+        poster_flag = kwargs.get('download_posters', False)
+        logo_flag = kwargs.get('download_logos', False)
+        search_terms = kwargs.get('search_terms', [])
+        person_id_list = kwargs.get('person_ids', [])
+        row_limit = kwargs.get('row_limit', None)
+        time_window = kwargs.get('time_window', None)
+
+        call_function(
+            function,
+            original_language=original_language,
+            min_runtime=min_runtime,
+            adult_content_flag=adult_content_flag,
+            skip_loaded_titles=skip_loaded_titles,
+            backdrop_flag=backdrop_flag,
+            poster_flag=poster_flag,
+            logo_flag=logo_flag,
+            search_terms=search_terms,
+            person_id_list=person_id_list,
+            row_limit=row_limit,
+            time_window=time_window
+        )
+        
+        api_response, api_error_flag = build_api_response()
+        return api_response
+    
+    except Exception as e:
+        api_response, api_error_flag = build_api_response()
+        return api_response
+    
+    finally:
+        lock.release()
+
+cli_function_aliases = {
+    'api_listener': 'api_listener'
+}
+
+def parse_command_run_arguments():
     """Interprets the arguments passed into the command line to run the correct function"""
     global local_db, movie_data, person_data, image_data, current_time, current_time_string, current_time_log
-    import local_db_handler, movie_handler, person_handler, image_handler
+    # import local_db_handler, movie_handler, person_handler, image_handler
 
     # current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
 
     parser = argparse.ArgumentParser(description='Retrieve movie data')
 
-    function_aliases = {
-        'display_missing_counts': 'display_missing_counts',
-        'dmc': 'display_missing_counts',
-        'get_movies_updated_yesterday': 'get_movies_updated_yesterday',
-        'gmuy': 'get_movies_updated_yesterday',
-        'get_movies_by_favorite_actor': 'get_movies_by_favorite_actor',
-        'gmbfa': 'get_movies_by_favorite_actor',
-        'get_movies_by_search_terms': 'get_movies_by_search_terms',
-        'gmbst': 'get_movies_by_search_terms',
-        'get_trending_movies': 'get_trending_movies',
-        'gtm': 'get_trending_movies',
-        'get_missing_title_keywords': 'get_missing_title_keywords',
-        'gmtk': 'get_missing_title_keywords',
-        'get_missing_persons': 'get_missing_persons',
-        'gmp': 'get_missing_persons',
-        'get_missing_title_cast': 'get_missing_title_cast',
-        'gmtc': 'get_missing_title_cast',
-        'get_title_images_by_persons': 'get_title_images_by_persons',
-        'gtibp': 'get_title_images_by_persons',
-        'get_all_movies': 'get_all_movies',
-        'gam': 'get_all_movies',
-        'get_all_persons': 'get_all_persons',
-        'gap': 'get_all_persons',
-        'reconcile_movies_against_full_list': 'reconcile_movies_against_full_list',
-        'rmafl': 'reconcile_movies_against_full_list',
-        'reconcile_persons_against_full_list': 'reconcile_persons_against_full_list',
-        'rpafl': 'reconcile_persons_against_full_list'
-    }
-    
+    function_aliases = cli_function_aliases.copy()
+    function_aliases.update(common_function_aliases)
+
     parser.add_argument('function', choices=function_aliases.keys(), help='Function to call')
+    parser.add_argument('-host', '--api_host', type=str, help='Hostname for Flask API listener')
+    parser.add_argument('-p', '--port', type=str, help='Port for Flask API listener')
     parser.add_argument('-lang', '--original_language', type=str, help='Original language')
     parser.add_argument('-rt', '--min_runtime', type=int, help='Minimum runtime in minutes')
     parser.add_argument('-adult', '--adult_content_flag', type=str, help='Adult content flag, accepts "include", "exclude" and "only"')
@@ -63,41 +208,92 @@ def parse_command_run():
     parser.add_argument('-pid', '--person_ids', nargs='+', type=int, help='List of person TMDB IDs')
     parser.add_argument('-rl', '--row_limit', type=int, help='Limit the number of rows returned')
     parser.add_argument('-tw', '--time_window', type=str, help='Time window for "Trending": Accepts "day" or "week"')
-    parser.add_argument('-b', '--download_backdrops', action='store_true', help='Download backdrop images, if available')
-    parser.add_argument('-p', '--download_posters', action='store_true', help='Download poster images, if available')
-    parser.add_argument('-l', '--download_logos', action='store_true', help='Download logo images, if available')
+    parser.add_argument('-db', '--download_backdrops', action='store_true', help='Download backdrop images, if available')
+    parser.add_argument('-dp', '--download_posters', action='store_true', help='Download poster images, if available')
+    parser.add_argument('-dl', '--download_logos', action='store_true', help='Download logo images, if available')
     
-    # Determine if running from command line
-    # run_from_command_line = sys.stdin.isatty()
-
-    if run_from_command_line:
+    if not DEBUGGING_MODE:
         args = parser.parse_args()
     else:
         # provide test values when developing / debugging
-        # args = argparse.Namespace(
-        #     function='display_missing_counts'
-        # )
+        args = argparse.Namespace(
+            function='display_missing_counts'
+        )
         # args = argparse.Namespace(
         #     function='get_movies_updated_yesterday',
         #     original_language='en',
         #     # min_runtime=30,
         #     adult_content_flag='o'
         # )
-        args = argparse.Namespace(
-            function='get_title_images_by_persons',
-            person_ids=[135660, 143070],
-            skip_loaded_titles=True,
-            adult_content_flag='o',
-            download_backdrops=True,
-            download_posters=True
-            
-        )
+        # args = argparse.Namespace(
+        #     function='get_title_images_by_persons',
+        #     person_ids=[1350834],
+        #     skip_loaded_titles=True,
+        #     adult_content_flag='o',
+        #     download_backdrops=True,
+        #     download_posters=True
+        # )
 
-    # function = args.function
+    # # function = args.function
     function = function_aliases.get(args.function, args.function)
+    host = getattr(args, 'api_host', None)
+    port = getattr(args, 'port', None)
     original_language = getattr(args, 'original_language', None)
     min_runtime = getattr(args, 'min_runtime', None)
     adult_content_flag = getattr(args, 'adult_content_flag', None)
+    skip_loaded_titles = getattr(args, 'skip_loaded_titles', False)
+    backdrop_flag = getattr(args, 'download_backdrops', False)
+    poster_flag = getattr(args, 'download_posters', False)
+    logo_flag = getattr(args, 'download_logos', False)
+    search_terms = getattr(args, 'search_terms', None)
+    person_id_list = getattr(args, 'person_ids', None)
+    row_limit = getattr(args, 'row_limit', None)
+    time_window = getattr(args, 'time_window', None)
+
+    if function:
+        call_function(
+                function,
+                host=host,
+                port=port,
+                original_language=original_language,
+                min_runtime=min_runtime,
+                adult_content_flag=adult_content_flag,
+                skip_loaded_titles=skip_loaded_titles,
+                backdrop_flag=backdrop_flag,
+                poster_flag=poster_flag,
+                logo_flag=logo_flag,
+                search_terms=search_terms,
+                person_id_list=person_id_list,
+                row_limit=row_limit,
+                time_window=time_window)
+    else:
+        valid_function_values = set(function_aliases.values())
+        valid_functions_string = ''.join([f'\n--{value}' for value in valid_function_values])
+        print(f'Invalid function specified.  Valid values are:{valid_functions_string}')
+        return
+
+def call_function(
+            function,
+			host=None,
+			port=None,
+            original_language=None,
+            min_runtime=None,
+            adult_content_flag=None,
+            skip_loaded_titles=None,
+            backdrop_flag=None,
+            poster_flag=None,
+            logo_flag=None,
+            search_terms=None,
+            person_id_list=None,
+            row_limit=None,
+            time_window=None
+        ):
+    
+    import local_db_handler, movie_handler, person_handler, image_handler
+    global local_db, movie_data, person_data, image_data, current_time, current_time_string, current_time_log, function_aliases
+    
+    # function = function_aliases.get(function, function)
+    
     if adult_content_flag:
         if adult_content_flag.lower() in ['include', 'i']:
             adult_content_flag = 'include'
@@ -111,19 +307,44 @@ def parse_command_run():
                 adult_content_flag = 'only'
             else:
                 adult_content_flag = 'exclude'
-    skip_loaded_titles = getattr(args, 'skip_loaded_titles', False)
-    backdrop_flag = getattr(args, 'download_backdrops', False)
-    poster_flag = getattr(args, 'download_posters', False)
-    logo_flag = getattr(args, 'download_logos', False)
-    search_terms = getattr(args, 'search_terms', None)
-    person_id_list = getattr(args, 'person_ids', None)
-    row_limit = getattr(args, 'row_limit', None)
-    time_window = getattr(args, 'time_window', None)
+    
+    if min_runtime:
+        try:
+            min_runtime = int(min_runtime)
+        except Exception:
+            min_runtime = None
+    
+    if skip_loaded_titles:
+        skip_loaded_titles = string_utils.string_to_bool(skip_loaded_titles)
+        if not isinstance(skip_loaded_titles, bool):
+            skip_loaded_titles = False
+            
+    if row_limit:
+        try:
+            row_limit = int(row_limit)
+        except Exception:
+            row_limit = None
+    
     if time_window:
         if time_window.lower() in ['day', 'd']:
             time_window = 'day'
         elif time_window.lower() in ['week', 'w']:
             time_window = 'week'
+            
+    if backdrop_flag:
+        backdrop_flag = string_utils.string_to_bool(backdrop_flag)
+        if not isinstance(backdrop_flag, bool):
+            backdrop_flag = False
+            
+    if poster_flag:
+        poster_flag = string_utils.string_to_bool(poster_flag)
+        if not isinstance(poster_flag, bool):
+            poster_flag = False
+            
+    if logo_flag:
+        logo_flag = string_utils.string_to_bool(logo_flag)
+        if not isinstance(logo_flag, bool):
+            logo_flag = False
 
     local_db = local_db_handler.LocalDB(
         engine,
@@ -172,65 +393,63 @@ def parse_command_run():
             output_path, 
             images_path, 
             output_title_images_flag)
-
-    if function == 'display_missing_counts':
+    
+    if function == 'api_listener':
+        run_flask_app(host=host, port=port)
+    elif function == 'display_missing_counts':
         display_missing_counts(local_db)
-        # if run_from_command_line:
-        #     sys.exit()
-        # else:
         return
     elif function == 'get_movies_updated_yesterday':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         get_movies_updated_yesterday(original_language=original_language, min_runtime=min_runtime, adult_content_flag=adult_content_flag)
+        print_job_end()
     elif function == 'get_movies_by_favorite_actor':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         get_movies_by_favorite_actor(person_id_list=person_id_list, adult_content_flag=adult_content_flag, skip_loaded_titles=skip_loaded_titles, row_limit=row_limit)
+        print_job_end()
     elif function == 'get_movies_by_search_terms':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         get_movies_by_search_terms(search_terms=search_terms, original_language=original_language, adult_content_flag=adult_content_flag, skip_loaded_titles=skip_loaded_titles, row_limit=row_limit)
+        print_job_end()
     elif function == 'get_trending_movies':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         get_trending_movies(time_window=time_window, original_language=original_language, skip_loaded_titles=skip_loaded_titles, row_limit=row_limit)
+        print_job_end()
     elif function == 'get_missing_title_keywords':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         display_missing_counts(local_db)
         get_missing_title_keywords(adult_content_flag=adult_content_flag, row_limit=row_limit)
+        print_job_end()
     elif function == 'get_missing_persons':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         display_missing_counts(local_db)
         get_missing_persons(adult_content_flag=adult_content_flag, row_limit=row_limit)
+        print_job_end()
     elif function == 'get_missing_title_cast':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         display_missing_counts(local_db)
         get_missing_title_cast(adult_content_flag=adult_content_flag, row_limit=row_limit)
+        print_job_end()
     elif function == 'get_title_images_by_persons':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         get_title_images_by_persons(person_id_list=person_id_list, skip_loaded_titles=skip_loaded_titles, adult_content_flag=adult_content_flag, row_limit=row_limit, backdrop_flag=backdrop_flag, poster_flag=poster_flag, logo_flag=logo_flag)
+        print_job_end()
     elif function == 'get_all_movies':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         get_all_movies()
+        print_job_end()
     elif function == 'get_all_persons':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         get_all_persons()
+        print_job_end()
     elif function == 'reconcile_movies_against_full_list':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         reconcile_movies_against_full_list()
+        print_job_end()
     elif function == 'reconcile_persons_against_full_list':
-        print(f'Job Start: {current_time}')
+        print_job_start()
         reconcile_persons_against_full_list()
-    else:
-        valid_function_values = set(function_aliases.values())
-        # valid_function_values = set(function_aliases.keys())
-        valid_functions_string = ''.join([f'\n--{value}' for value in valid_function_values])
-        print(f'Invalid function specified.  Valid values are:{valid_functions_string}')
-        # if run_from_command_line:
-        #     sys.exit()
-        # else:
-        return
-
-    job_end_current_time, job_end_current_time_string, job_end_current_time_log = dtu.get_current_timestamp()
-    days, hours, minutes, seconds, job_duration = dtu.get_duration(current_time, job_end_current_time)
-    print(f'Job End: {job_end_current_time}\nTotal Duration: {job_duration}')
+        print_job_end()
 
 def display_missing_counts(local_db):
     # print(f'Global Adult Content Flag: {global_adult_content_flag}')
@@ -575,156 +794,236 @@ def create_image_html_by_person(person_id_list, adult_content_flag=None, backdro
 
         create_title_image_html(tmdb_id_list, html_name=(person_name + '.html'), backdrop_required_flag=backdrop_required_flag)
 
+def print_job_start():
+    global current_time
+
+    print(f'Job Start: {current_time}')
+
+def print_job_end():
+    global current_time
+    job_end_current_time, job_end_current_time_string, job_end_current_time_log = dtu.get_current_timestamp()
+    days, hours, minutes, seconds, job_duration = dtu.get_duration(current_time, job_end_current_time)
+    print(f'Job End: {job_end_current_time}\nTotal Duration: {job_duration}')
+
+def per_run_initializations():
+    global local_db, movie_data, person_data, image_data
+
+    local_db = local_db_handler.LocalDB(
+        engine,
+        global_adult_content_flag,
+        loaded_titles_sql=loaded_titles_sql,
+        loaded_title_cast_sql=loaded_title_cast_sql,
+        loaded_persons_sql=loaded_persons_sql,
+        loaded_title_images_sql=loaded_title_images_sql,
+        favorite_persons_sql=favorite_persons_sql,
+        search_terms_sql=search_terms_sql,
+        title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
+        titles_missing_cast_sql=titles_missing_cast_sql,
+        titles_missing_keywords_sql=titles_missing_keywords_sql,
+        persons_missing_sql=persons_missing_sql
+    )
+    movie_data = movie_handler.MovieData(
+        api_key, 
+        local_db, 
+        output_path, 
+        output_titles_flag, 
+        output_title_genres_flag, 
+        output_genres_flag, 
+        output_title_spoken_languages_flag, 
+        output_spoken_languages_flag, 
+        output_title_production_countries_flag, 
+        output_production_countries_flag, 
+        output_title_production_companies_flag, 
+        output_production_companies_flag, 
+        output_title_collections_flag, 
+        output_collections_flag, 
+        output_title_keywords_flag, 
+        output_keywords_flag, 
+        output_title_removed_flag
+    )
+    person_data = person_handler.PersonData(
+        api_key, 
+        local_db, 
+        output_path, 
+        output_persons_flag, 
+        output_person_aka_flag, 
+        output_title_cast_flag, 
+        output_person_removed_flag)
+    image_data = image_handler.ImageData(
+        api_key, 
+        local_db, 
+        output_path, 
+        images_path, 
+        output_title_images_flag)
+
 
 #%%
 os.environ['PYDEVD_WARN_EVALUATION_TIMEOUT'] = '2000'
-# run_from_command_line = sys.stdin.isatty()
-run_from_command_line = os.getenv("PYTHON_ISATTY", "True").lower() == "true" and sys.stdin.isatty()
+# run_from_command_line = os.getenv("PYTHON_ISATTY", "True").lower() == "true" and sys.stdin.isatty()
+# if 'KUBERNETES_SERVICE_HOST' in os.environ:
+#     run_from_command_line = True
 
-# current_dir = os.getcwd()
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-# print(current_dir)
-# project_dir = current_dir
+DEBUGGING_MODE = False
+if 'VSCODE_PID' in os.environ or sys.gettrace() is not None:
+    DEBUGGING_MODE = True
+if 'KUBERNETES_SERVICE_HOST' in os.environ:
+    DEBUGGING_MODE = False
+# if DEBUGGING_MODE:
+#     print(f'DEBUGGING_MODE: {DEBUGGING_MODE}')
 
-s3_config_path = Path(current_dir).parent.parent / 'data' / 'Config'
-config_path = None
-if s3_config_path.exists():
-    ini_files = [entry for entry in os.scandir(s3_config_path) if entry.is_file() and entry.name.endswith('.ini')]
-    if len(ini_files) >= 3:
-        config_path = Path(current_dir).parent.parent / 'data' / 'Config'
-if not config_path:
-    config_path = Path(current_dir).parent.parent / 'config'
-app_config_path = config_path / "app_config.ini"
-connection_config_path = config_path / "connections_config.ini"
-output_file_config_path = config_path / "output_files_config.ini"
-sql_queries_config_path = config_path / "sql_queries"
+# # current_dir = os.getcwd()
+# # current_dir = os.path.dirname(os.path.abspath(__file__))
+# current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+# # print(current_dir)
+# # project_dir = current_dir
 
-(
-    output_path, 
-    images_path, 
-    # log_file_path, 
-    # password_method, 
-    # password_access_key, 
-    # password_secret_key, 
-    # password_endpoint_url, 
-    # password_region_name, 
-    # password_password_path, 
-    # read_chunk_size, 
-    # archive_flag, 
-    # logging_flag, 
-    # log_archive_expire_days, 
-    global_original_language, 
-    global_adult_content_flag
-    ) = conn.read_app_config_settings(app_config_path)
+# api_result = None
+# api_error_flag = None
+# api_error_message = None
 
-if global_adult_content_flag and global_adult_content_flag not in ('include', 'exclude', 'only'):
-    global_adult_content_flag = 'exclude'
+# s3_config_path = Path(current_dir).parent.parent / 'data' / 'Config'
+# config_path = None
+# if s3_config_path.exists():
+#     ini_files = [entry for entry in os.scandir(s3_config_path) if entry.is_file() and entry.name.endswith('.ini')]
+#     if len(ini_files) >= 3:
+#         config_path = Path(current_dir).parent.parent / 'data' / 'Config'
+# if not config_path:
+#     config_path = Path(current_dir).parent.parent / 'config'
+# app_config_path = config_path / "app_config.ini"
+# connection_config_path = config_path / "connections_config.ini"
+# output_file_config_path = config_path / "output_files_config.ini"
+# sql_queries_config_path = config_path / "sql_queries"
 
-db_target_config = 'target_connection'
-(
-    connect_type, 
-    server_address, 
-    server_port, 
-    database_name, 
-    # schema, 
-    db_password_method, 
-    db_password_access_key, 
-    db_password_secret_key, 
-    db_password_endpoint_url, 
-    db_password_region_name, 
-    db_password_password_path, 
-    db_user_name, 
-    db_secret_key
-    ) = conn.read_connection_config_settings(connection_config_path, db_target_config)
+# # read_app_config_settings
+# (
+#     output_path, 
+#     images_path, 
+#     # log_file_path, 
+#     # password_method, 
+#     # password_access_key, 
+#     # password_secret_key, 
+#     # password_endpoint_url, 
+#     # password_region_name, 
+#     # password_password_path, 
+#     # read_chunk_size, 
+#     # archive_flag, 
+#     # logging_flag, 
+#     # log_archive_expire_days, 
+#     global_original_language, 
+#     global_adult_content_flag
+#     ) = conn.read_app_config_settings(app_config_path)
 
-db_password = None
+# if global_adult_content_flag and global_adult_content_flag not in ('include', 'exclude', 'only'):
+#     global_adult_content_flag = 'exclude'
 
-if 'TARGET_DB_PASSWORD' in os.environ:
-    db_password = os.environ['TARGET_DB_PASSWORD']
+# db_target_config = 'target_connection'
+# # read_connection_config_settings
+# (
+#     connect_type, 
+#     server_address, 
+#     server_port, 
+#     database_name, 
+#     # schema, 
+#     db_password_method, 
+#     db_password_access_key, 
+#     db_password_secret_key, 
+#     db_password_endpoint_url, 
+#     db_password_region_name, 
+#     db_password_password_path, 
+#     db_user_name, 
+#     db_secret_key
+#     ) = conn.read_connection_config_settings(connection_config_path, db_target_config)
 
-if not db_password:
-    db_password = pw.get_password(
-        db_password_method, 
-        password_key=db_secret_key, 
-        account_name=db_user_name, 
-        access_key=db_password_access_key, 
-        secret_key=db_password_secret_key, 
-        endpoint_url=db_password_endpoint_url, 
-        region_name=db_password_region_name, 
-        password_path=db_password_password_path)
+# db_password = None
 
-try:
-    engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
-except Exception as e:
-    engine = None
+# if 'NEXUS_TDR_TARGET_DB_PASSWORD' in os.environ:
+#     db_password = os.environ['NEXUS_TDR_TARGET_DB_PASSWORD']
+# else:
+#     db_password = pw.get_password(
+#         db_password_method, 
+#         password_key=db_secret_key, 
+#         account_name=db_user_name, 
+#         access_key=db_password_access_key, 
+#         secret_key=db_password_secret_key, 
+#         endpoint_url=db_password_endpoint_url, 
+#         region_name=db_password_region_name, 
+#         password_path=db_password_password_path)
 
-api_source_config = 'tmdb_api_connection'
-(
-    api_password_method, 
-    api_password_access_key, 
-    api_password_secret_key, 
-    api_password_endpoint_url, 
-    api_password_region_name, 
-    api_password_password_path, 
-    api_user_name, 
-    api_secret_key
-    ) = conn.read_connection_config_settings(connection_config_path, api_source_config)
-# api_key = pw.get_password(api_password_method, password_key=api_secret_key, account_name=api_user_name)
+# try:
+#     engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
+# except Exception as e:
+#     engine = None
 
-api_key = None
+# api_source_config = 'tmdb_api_connection'
+# # read_connection_config_settings
+# (
+#     api_password_method, 
+#     api_password_access_key, 
+#     api_password_secret_key, 
+#     api_password_endpoint_url, 
+#     api_password_region_name, 
+#     api_password_password_path, 
+#     api_user_name, 
+#     api_secret_key
+#     ) = conn.read_connection_config_settings(connection_config_path, api_source_config)
+# # api_key = pw.get_password(api_password_method, password_key=api_secret_key, account_name=api_user_name)
 
-if 'TMDB_API_KEY' in os.environ:
-    api_key = os.environ['TMDB_API_KEY']
+# api_key = None
 
-if not api_key:
-    api_key = pw.get_password(
-        api_password_method, 
-        password_key=api_secret_key, 
-        account_name=api_user_name, 
-        access_key=api_password_access_key, 
-        secret_key=api_password_secret_key, 
-        endpoint_url=api_password_endpoint_url, 
-        region_name=api_password_region_name, 
-        password_path=api_password_password_path)
+# if 'NEXUS_TMDB_API_KEY' in os.environ:
+#     api_key = os.environ['NEXUS_TMDB_API_KEY']
+# else:
+#     api_key = pw.get_password(
+#         api_password_method, 
+#         password_key=api_secret_key, 
+#         account_name=api_user_name, 
+#         access_key=api_password_access_key, 
+#         secret_key=api_password_secret_key, 
+#         endpoint_url=api_password_endpoint_url, 
+#         region_name=api_password_region_name, 
+#         password_path=api_password_password_path)
 
-(
-    loaded_titles_sql, 
-    loaded_title_cast_sql, 
-    loaded_persons_sql, 
-    loaded_title_images_sql, 
-    favorite_persons_sql, 
-    search_terms_sql, 
-    title_images_by_favorite_persons_sql, 
-    titles_missing_cast_sql, 
-    titles_missing_keywords_sql, 
-    persons_missing_sql
-    ) = misc.read_sql_queries(sql_queries_config_path)
-# loaded_titles_sql, loaded_title_cast_sql, loaded_persons_sql, loaded_title_images_sql, favorite_persons_sql, search_terms_sql, titles_missing_cast_sql, titles_missing_keywords_sql, persons_missing_sql = conn.read_sql_queries(sql_queries_config_path)
+# # read_sql_queries
+# (
+#     loaded_titles_sql, 
+#     loaded_title_cast_sql, 
+#     loaded_persons_sql, 
+#     loaded_title_images_sql, 
+#     favorite_persons_sql, 
+#     search_terms_sql, 
+#     title_images_by_favorite_persons_sql, 
+#     titles_missing_cast_sql, 
+#     titles_missing_keywords_sql, 
+#     persons_missing_sql
+#     ) = misc.read_sql_queries(sql_queries_config_path)
+# # loaded_titles_sql, loaded_title_cast_sql, loaded_persons_sql, loaded_title_images_sql, favorite_persons_sql, search_terms_sql, titles_missing_cast_sql, titles_missing_keywords_sql, persons_missing_sql = conn.read_sql_queries(sql_queries_config_path)
 
-(
-    output_titles_flag, 
-    output_title_genres_flag, 
-    output_genres_flag, 
-    output_title_spoken_languages_flag, 
-    output_spoken_languages_flag, 
-    output_title_production_countries_flag, 
-    output_production_countries_flag, 
-    output_title_production_companies_flag, 
-    output_production_companies_flag, 
-    output_title_collections_flag, 
-    output_collections_flag, 
-    output_title_keywords_flag, 
-    output_keywords_flag, 
-    output_persons_flag, 
-    output_person_aka_flag, 
-    output_title_cast_flag, 
-    output_title_images_flag, 
-    output_person_removed_flag, 
-    output_title_removed_flag
-    ) = conn.read_output_file_flags(output_file_config_path)
+# # read_output_file_flags
+# (
+#     output_titles_flag, 
+#     output_title_genres_flag, 
+#     output_genres_flag, 
+#     output_title_spoken_languages_flag, 
+#     output_spoken_languages_flag, 
+#     output_title_production_countries_flag, 
+#     output_production_countries_flag, 
+#     output_title_production_companies_flag, 
+#     output_production_companies_flag, 
+#     output_title_collections_flag, 
+#     output_collections_flag, 
+#     output_title_keywords_flag, 
+#     output_keywords_flag, 
+#     output_persons_flag, 
+#     output_person_aka_flag, 
+#     output_title_cast_flag, 
+#     output_title_images_flag, 
+#     output_person_removed_flag, 
+#     output_title_removed_flag
+#     ) = conn.read_output_file_flags(output_file_config_path)
 
-current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
+# current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
+
+my_settings = settings.Settings()
 
 local_db = None
 movie_data = None
@@ -745,7 +1044,6 @@ image_data = None
 #     titles_missing_keywords_sql=titles_missing_keywords_sql,
 #     persons_missing_sql=persons_missing_sql
 # )
-# # print(len(local_db.loaded_titles))
 # movie_data = movie_handler.MovieData(
 #     api_key, 
 #     local_db, 
@@ -783,66 +1081,74 @@ image_data = None
 #%%
 
 if __name__ == '__main__':
-    if run_from_command_line:
-        parse_command_run()
+    if not DEBUGGING_MODE:
+        per_run_initializations()
+        parse_command_run_arguments()
     else:
         import local_db_handler, movie_handler, person_handler, image_handler
         
-        # parse_command_run()
-        
         # current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
 
-        print(f'Job Start: {current_time}')
+        # parse_command_run_arguments()
+        
+        print_job_start()
 
-        local_db = local_db_handler.LocalDB(
-            engine,
-            global_adult_content_flag,
-            loaded_titles_sql=loaded_titles_sql,
-            loaded_title_cast_sql=loaded_title_cast_sql,
-            loaded_persons_sql=loaded_persons_sql,
-            loaded_title_images_sql=loaded_title_images_sql,
-            favorite_persons_sql=favorite_persons_sql,
-            search_terms_sql=search_terms_sql,
-            title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
-            titles_missing_cast_sql=titles_missing_cast_sql,
-            titles_missing_keywords_sql=titles_missing_keywords_sql,
-            persons_missing_sql=persons_missing_sql
-        )
-        # print(len(local_db.loaded_titles))
-        movie_data = movie_handler.MovieData(
-            api_key, 
-            local_db, 
-            output_path, 
-            output_titles_flag, 
-            output_title_genres_flag, 
-            output_genres_flag, 
-            output_title_spoken_languages_flag, 
-            output_spoken_languages_flag, 
-            output_title_production_countries_flag, 
-            output_production_countries_flag, 
-            output_title_production_companies_flag, 
-            output_production_companies_flag, 
-            output_title_collections_flag, 
-            output_collections_flag, 
-            output_title_keywords_flag, 
-            output_keywords_flag, 
-            output_title_removed_flag
-        )
-        person_data = person_handler.PersonData(
-            api_key, 
-            local_db, 
-            output_path, 
-            output_persons_flag, 
-            output_person_aka_flag, 
-            output_title_cast_flag, 
-            output_person_removed_flag)
-        image_data = image_handler.ImageData(
-            api_key, 
-            local_db, 
-            output_path, 
-            images_path, 
-            output_title_images_flag)
+        per_run_initializations(my_settings)
 
+        # local_db = local_db_handler.LocalDB(
+        #     engine,
+        #     global_adult_content_flag,
+        #     loaded_titles_sql=loaded_titles_sql,
+        #     loaded_title_cast_sql=loaded_title_cast_sql,
+        #     loaded_persons_sql=loaded_persons_sql,
+        #     loaded_title_images_sql=loaded_title_images_sql,
+        #     favorite_persons_sql=favorite_persons_sql,
+        #     search_terms_sql=search_terms_sql,
+        #     title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
+        #     titles_missing_cast_sql=titles_missing_cast_sql,
+        #     titles_missing_keywords_sql=titles_missing_keywords_sql,
+        #     persons_missing_sql=persons_missing_sql
+        # )
+        # movie_data = movie_handler.MovieData(
+        #     api_key, 
+        #     local_db, 
+        #     output_path, 
+        #     output_titles_flag, 
+        #     output_title_genres_flag, 
+        #     output_genres_flag, 
+        #     output_title_spoken_languages_flag, 
+        #     output_spoken_languages_flag, 
+        #     output_title_production_countries_flag, 
+        #     output_production_countries_flag, 
+        #     output_title_production_companies_flag, 
+        #     output_production_companies_flag, 
+        #     output_title_collections_flag, 
+        #     output_collections_flag, 
+        #     output_title_keywords_flag, 
+        #     output_keywords_flag, 
+        #     output_title_removed_flag
+        # )
+        # person_data = person_handler.PersonData(
+        #     api_key, 
+        #     local_db, 
+        #     output_path, 
+        #     output_persons_flag, 
+        #     output_person_aka_flag, 
+        #     output_title_cast_flag, 
+        #     output_person_removed_flag)
+        # image_data = image_handler.ImageData(
+        #     api_key, 
+        #     local_db, 
+        #     output_path, 
+        #     images_path, 
+        #     output_title_images_flag)
+
+        # movie_data.get_title_data([1089679])
+
+        # api_result = {'key1':'value1','key2':'value2'}
+        # api_error_flag = False
+        # build_api_response()
+        
         # get_all_movies()
         # get_all_persons()
         # reconcile_movies_against_full_list()
@@ -868,6 +1174,9 @@ if __name__ == '__main__':
 
         # movie_data.get_movie_discover_data(adult_content_flag='only')
 
+        # movie_data.get_title_data([1089679])
+        # get_movies_by_search_terms(['christmas'], original_language='en')
+
         # get_title_images_by_persons([1912793], skip_loaded_titles=False)
 
         # get_missing_persons(current_time_string, [1535848, 1426252, 135660, 143070, 136331, 76575, 932319, 1056772, 2953862, 997483, 591313])
@@ -892,8 +1201,6 @@ if __name__ == '__main__':
 
         # get_movies_by_favorite_actor(adult_content_flag=True, ids_to_skip=local_db.loaded_titles)
 
-        job_end_current_time, job_end_current_time_string, job_end_current_time_log = dtu.get_current_timestamp()
-        days, hours, minutes, seconds, job_duration = dtu.get_duration(current_time, job_end_current_time)
-        print(f'Job End: {job_end_current_time}\nTotal Duration: {job_duration}')
+        print_job_end()
 
         #%%

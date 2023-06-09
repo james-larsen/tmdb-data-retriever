@@ -12,6 +12,7 @@ main*.py
 set_keyring_passwords.py
 docker/*/*.env
 vscode/**
+**/api_endpoints/**
 launch.json
 ~$*.xls*
 image_page_builder.py
