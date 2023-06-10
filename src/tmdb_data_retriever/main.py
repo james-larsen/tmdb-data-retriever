@@ -1,22 +1,22 @@
 #%%
 import sys
 import os
-from pathlib import Path
+# from pathlib import Path
 import argparse
 import dateparser
-import datetime
+# import datetime
 from flask import Flask, request, make_response, jsonify
-import json
+# import json
 from threading import Lock
-import inspect
-from nexus_utils.database_utils import build_engine
-from nexus_utils import password_utils as pw
+# import inspect
+# from nexus_utils.database_utils import build_engine
+# from nexus_utils import password_utils as pw
 from nexus_utils import datetime_utils as dtu
 from nexus_utils import string_utils
 # import utils.connection_utils as conn
-from src.tmdb_data_retriever.utils import connection_utils as conn
+# from src.tmdb_data_retriever.utils import connection_utils as conn
 # import utils.misc_utils as misc
-from src.tmdb_data_retriever.utils import misc_utils as misc
+# from src.tmdb_data_retriever.utils import misc_utils as misc
 from src.tmdb_data_retriever import settings
 
 #%%
@@ -41,48 +41,69 @@ from src.tmdb_data_retriever import settings
 #     else:
 #         print(f'Request failed with status code: {response.status_code}')
 
-app = Flask(__name__)
+tmdb_app = Flask(__name__)
 lock = Lock()
 
-def run_flask_app(host=None, port=None):
-    from waitress import serve
+class NoPrint:
+    def write(self, x):
+        pass
+    
+    def flush(self):
+        pass
 
+
+def run_flask_app(host=None, port=None, verbose_flag=False):
+    from waitress import serve
     if not host:
         host = 'localhost'
 
     if not port:
         port = 5002
 
-    print(f'Listening on {host}:{port}...')
-    serve(app, host=host, port=port)
-    # app.run(host=host, port=port)
+    print(f'Listening on {host}:{port}')
+    print('Press Ctrl+C to exit')
 
-def build_api_response():
-    global api_result, api_error_flag, api_error_message
+    # Disable print functionality
+    if not verbose_flag:
+        sys.stdout = NoPrint()
 
-    with app.app_context():
-        if api_error_flag:
-            if not api_result:
-                api_result = {}
-            response_data = {
-                'status': 'error',
-                'message': api_error_message,
-                'result': {}
-            }
-            api_response = make_response(jsonify(response_data), 400)
-        else:
-            response_data = {
-                'status': 'success',
-                'message': 'Completed successfully',
-                'result': api_result
-            }
-            api_response = make_response(jsonify(response_data), 200)
+    serve(tmdb_app, host=host, port=port)
+    # tmdb_app.run(host=host, port=port)
 
-        api_response.headers['Content-Type'] = 'application/json'
-        # Decode with: "json.loads(api_response.get_data(as_text=True))"
-        # Will be different when reading the results from another application
+# def build_api_response(function):
+#     global my_settings, my_api_response#, api_result, api_error_flag, api_message
 
-        return api_response, api_error_flag
+#     with tmdb_app.app_context():
+#         if my_api_response.api_error_flag:
+#             # if not my_api_response.api_result:
+#             #     my_api_response.api_result = []
+#             response_data = {
+#                 'function': function,
+#                 'status': 'error',
+#                 'message': my_api_response.api_message,
+#                 'result': []
+#             }
+#             api_response = make_response(jsonify(response_data), 400)
+#         else:
+#             if not my_api_response.api_result:
+#                 result = []
+#             else:
+#                 result = my_api_response.api_result
+#             if not my_api_response.api_message:
+#                 my_api_response.api_message = 'Completed successfully'
+#             response_data = {
+#                 'function': function,
+#                 'status': 'success',
+#                 'message': my_api_response.api_message,
+#                 'result': result
+#             }
+#             api_response = make_response(jsonify(response_data), 200)
+
+#         api_response.headers['Content-Type'] = 'application/json'
+#         # Decode with: "json.loads(api_response.get_data(as_text=True))"
+#         # Will be different when reading the results from another application
+
+#         return api_response, my_api_response.api_error_flag
 
 common_function_aliases = {
     'display_missing_counts': 'display_missing_counts',
@@ -114,80 +135,101 @@ common_function_aliases = {
 }
 
 api_function_aliases = {
-    
+    'rebuild_settings': 'rebuild_settings',
+    'rs': 'rebuild_settings'
 }
 
-@app.route('/request', methods=['POST'])
+@tmdb_app.route('/request', methods=['POST'])
 def trigger_function_from_api():
 
-    lock.acquire()
+    global my_settings
 
-    try:
-        per_run_initializations()
+    # lock.acquire()
 
-        params = request.args.to_dict()
+    # Process one request at a time
+    with lock:
+        try:
+            per_run_initializations(my_settings)
 
-        function_aliases = common_function_aliases.copy()
-        function_aliases.update(api_function_aliases)
+            params = request.args.to_dict()
+            # print(request)
+            # print(params)
 
-        # function = params.get('function_name')
-        kwargs = params.get('kwargs', {})
-        function = kwargs.get('function', None)
+            function_aliases = common_function_aliases.copy()
+            function_aliases.update(api_function_aliases)
 
-        function_lookup = function_aliases.get(function, function)
+            # function = params.get('function_name')
+            # kwargs = kwargs.get('kwargs', {})
+            function = params.get('function', None)
 
-        if function and not function_lookup:
-            valid_function_values = set(function_aliases.values())
-            valid_functions_string = ''.join([f'\n--{value}' for value in valid_function_values])
-            print(f'Invalid function specified.  Valid values are:{valid_functions_string}')
-            return {'error': f'Unknown function: "{function}"'}, 400
-        elif function and function_lookup:
-            function = function_lookup
+            function_lookup = function_aliases.get(function, function)
 
-        original_language = kwargs.get('original_language', None)
-        min_runtime = kwargs.get('min_runtime', None)
-        adult_content_flag = kwargs.get('adult_content_flag', None)
-        skip_loaded_titles = kwargs.get('skip_loaded_titles', False)
-        backdrop_flag = kwargs.get('download_backdrops', False)
-        poster_flag = kwargs.get('download_posters', False)
-        logo_flag = kwargs.get('download_logos', False)
-        search_terms = kwargs.get('search_terms', [])
-        person_id_list = kwargs.get('person_ids', [])
-        row_limit = kwargs.get('row_limit', None)
-        time_window = kwargs.get('time_window', None)
+            if function and not function_lookup:
+                valid_function_values = set(function_aliases.values())
+                valid_functions_string = ''.join([f'\n--{value}' for value in valid_function_values])
+                print(f'Invalid function specified.  Valid values are:{valid_functions_string}')
+                return {'error': f'Unknown function: "{function}"'}, 400
+            elif function and function_lookup:
+                function = function_lookup
 
-        call_function(
-            function,
-            original_language=original_language,
-            min_runtime=min_runtime,
-            adult_content_flag=adult_content_flag,
-            skip_loaded_titles=skip_loaded_titles,
-            backdrop_flag=backdrop_flag,
-            poster_flag=poster_flag,
-            logo_flag=logo_flag,
-            search_terms=search_terms,
-            person_id_list=person_id_list,
-            row_limit=row_limit,
-            time_window=time_window
-        )
+            original_language = params.get('original_language', None)
+            min_runtime = params.get('min_runtime', None)
+            adult_content_flag = params.get('adult_content_flag', None)
+            skip_loaded_titles = params.get('skip_loaded_titles', False)
+            backdrop_flag = params.get('download_backdrops', False)
+            poster_flag = params.get('download_posters', False)
+            logo_flag = params.get('download_logos', False)
+            search_terms_string = params.get('search_terms', '')
+            search_terms = [search_term for search_term in search_terms_string.split(',') if search_term.strip()]
+            tmdb_id_list_string = params.get('tmdb_ids', '')
+            tmdb_id_list = [int(tmdb_id) for tmdb_id in tmdb_id_list_string.split(',') if tmdb_id.strip()]
+            person_id_list_string = params.get('person_ids', '')
+            person_id_list = [int(person_id) for person_id in person_id_list_string.split(',') if person_id.strip()]
+            # print(person_id_list)
+            row_limit = params.get('row_limit', None)
+            time_window = params.get('time_window', None)
+
+            call_function(
+                function,
+                original_language=original_language,
+                min_runtime=min_runtime,
+                adult_content_flag=adult_content_flag,
+                skip_loaded_titles=skip_loaded_titles,
+                backdrop_flag=backdrop_flag,
+                poster_flag=poster_flag,
+                logo_flag=logo_flag,
+                search_terms=search_terms,
+                tmdb_id_list=tmdb_id_list,
+                person_id_list=person_id_list,
+                row_limit=row_limit,
+                time_window=time_window
+            )
+            
+            my_api_response.build_api_response(tmdb_app.app_context(), function)
+            # api_response, api_error_flag = build_api_response(function)
+            return my_api_response.api_response
         
-        api_response, api_error_flag = build_api_response()
-        return api_response
-    
-    except Exception as e:
-        api_response, api_error_flag = build_api_response()
-        return api_response
-    
-    finally:
-        lock.release()
+        except Exception as e:
+            print(f'Error: {str(e)}')
+            if my_api_response.api_error_flag == None:
+                my_api_response.api_error_flag = True
+            if not my_api_response.api_message:
+                my_api_response.api_message = str(e)
+            my_api_response.build_api_response(tmdb_app.app_context(), function)
+            # api_response, api_error_flag = build_api_response(function)
+            return my_api_response.api_response
+        
+        # finally:
+        #     lock.release()
 
 cli_function_aliases = {
-    'api_listener': 'api_listener'
+    'api_listener': 'api_listener',
+    'api': 'api_listener'
 }
 
 def parse_command_run_arguments():
     """Interprets the arguments passed into the command line to run the correct function"""
-    global local_db, movie_data, person_data, image_data, current_time, current_time_string, current_time_log
+    global local_db, movie_data, person_data, image_data#, current_time, current_time_string, current_time_log
     # import local_db_handler, movie_handler, person_handler, image_handler
 
     # current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
@@ -200,12 +242,14 @@ def parse_command_run_arguments():
     parser.add_argument('function', choices=function_aliases.keys(), help='Function to call')
     parser.add_argument('-host', '--api_host', type=str, help='Hostname for Flask API listener')
     parser.add_argument('-p', '--port', type=str, help='Port for Flask API listener')
+    parser.add_argument('-v', '--verbose_flag', action='store_true', help='Whether to allow stdout while in API listener mode')
     parser.add_argument('-lang', '--original_language', type=str, help='Original language')
     parser.add_argument('-rt', '--min_runtime', type=int, help='Minimum runtime in minutes')
     parser.add_argument('-adult', '--adult_content_flag', type=str, help='Adult content flag, accepts "include", "exclude" and "only"')
     parser.add_argument('-skip', '--skip_loaded_titles', action='store_true', help='Skip pulling titles already loaded')
     parser.add_argument('-search', '--search_terms', nargs='+', type=str, help='List of movie title keywords to search for')
-    parser.add_argument('-pid', '--person_ids', nargs='+', type=int, help='List of person TMDB IDs')
+    parser.add_argument('-tid', '--tmdb_ids', nargs='+', type=int, help='List of TMDB Title IDs')
+    parser.add_argument('-pid', '--person_ids', nargs='+', type=int, help='List of TMDB person IDs')
     parser.add_argument('-rl', '--row_limit', type=int, help='Limit the number of rows returned')
     parser.add_argument('-tw', '--time_window', type=str, help='Time window for "Trending": Accepts "day" or "week"')
     parser.add_argument('-db', '--download_backdrops', action='store_true', help='Download backdrop images, if available')
@@ -216,6 +260,8 @@ def parse_command_run_arguments():
         args = parser.parse_args()
     else:
         # provide test values when developing / debugging
+        print(f'DEBUGGING_MODE: {DEBUGGING_MODE}')
+        
         args = argparse.Namespace(
             function='display_missing_counts'
         )
@@ -238,6 +284,7 @@ def parse_command_run_arguments():
     function = function_aliases.get(args.function, args.function)
     host = getattr(args, 'api_host', None)
     port = getattr(args, 'port', None)
+    verbose_flag = getattr(args, 'verbose_flag', False)
     original_language = getattr(args, 'original_language', None)
     min_runtime = getattr(args, 'min_runtime', None)
     adult_content_flag = getattr(args, 'adult_content_flag', None)
@@ -246,6 +293,7 @@ def parse_command_run_arguments():
     poster_flag = getattr(args, 'download_posters', False)
     logo_flag = getattr(args, 'download_logos', False)
     search_terms = getattr(args, 'search_terms', None)
+    tmdb_id_list = getattr(args, 'tmdb_ids', None)
     person_id_list = getattr(args, 'person_ids', None)
     row_limit = getattr(args, 'row_limit', None)
     time_window = getattr(args, 'time_window', None)
@@ -255,6 +303,7 @@ def parse_command_run_arguments():
                 function,
                 host=host,
                 port=port,
+                verbose_flag=verbose_flag,
                 original_language=original_language,
                 min_runtime=min_runtime,
                 adult_content_flag=adult_content_flag,
@@ -263,6 +312,7 @@ def parse_command_run_arguments():
                 poster_flag=poster_flag,
                 logo_flag=logo_flag,
                 search_terms=search_terms,
+                tmdb_id_list=tmdb_id_list,
                 person_id_list=person_id_list,
                 row_limit=row_limit,
                 time_window=time_window)
@@ -276,6 +326,7 @@ def call_function(
             function,
 			host=None,
 			port=None,
+            verbose_flag=None,
             original_language=None,
             min_runtime=None,
             adult_content_flag=None,
@@ -284,13 +335,14 @@ def call_function(
             poster_flag=None,
             logo_flag=None,
             search_terms=None,
+            tmdb_id_list=None,
             person_id_list=None,
             row_limit=None,
             time_window=None
         ):
     
-    import local_db_handler, movie_handler, person_handler, image_handler
-    global local_db, movie_data, person_data, image_data, current_time, current_time_string, current_time_log, function_aliases
+    # import local_db_handler, movie_handler, person_handler, image_handler
+    global my_settings, local_db, movie_data, person_data, image_data, api_response#, current_time, current_time_string, current_time_log, function_aliases
     
     # function = function_aliases.get(function, function)
     
@@ -300,10 +352,10 @@ def call_function(
         elif adult_content_flag.lower() in ['only', 'o']:
             adult_content_flag = 'only'
     else:
-        if global_adult_content_flag:
-            if global_adult_content_flag.lower() in ['include', 'i']:
+        if my_settings.global_adult_content_flag:
+            if my_settings.global_adult_content_flag.lower() in ['include', 'i']:
                 adult_content_flag = 'include'
-            elif global_adult_content_flag.lower() in ['only', 'o']:
+            elif my_settings.global_adult_content_flag.lower() in ['only', 'o']:
                 adult_content_flag = 'only'
             else:
                 adult_content_flag = 'exclude'
@@ -346,59 +398,66 @@ def call_function(
         if not isinstance(logo_flag, bool):
             logo_flag = False
 
-    local_db = local_db_handler.LocalDB(
-        engine,
-        global_adult_content_flag,
-        loaded_titles_sql=loaded_titles_sql,
-        loaded_title_cast_sql=loaded_title_cast_sql,
-        loaded_persons_sql=loaded_persons_sql,
-        loaded_title_images_sql=loaded_title_images_sql,
-        favorite_persons_sql=favorite_persons_sql,
-        search_terms_sql=search_terms_sql,
-        title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
-        titles_missing_cast_sql=titles_missing_cast_sql,
-        titles_missing_keywords_sql=titles_missing_keywords_sql,
-        persons_missing_sql=persons_missing_sql
-    )
-    movie_data = movie_handler.MovieData(
-        api_key, 
-        local_db, 
-        output_path, 
-        output_titles_flag, 
-        output_title_genres_flag, 
-        output_genres_flag, 
-        output_title_spoken_languages_flag, 
-        output_spoken_languages_flag, 
-        output_title_production_countries_flag, 
-        output_production_countries_flag, 
-        output_title_production_companies_flag, 
-        output_production_companies_flag, 
-        output_title_collections_flag, 
-        output_collections_flag, 
-        output_title_keywords_flag, 
-        output_keywords_flag, 
-        output_title_removed_flag
-    )
-    person_data = person_handler.PersonData(
-        api_key, 
-        local_db, 
-        output_path, 
-        output_persons_flag, 
-        output_person_aka_flag, 
-        output_title_cast_flag, 
-        output_person_removed_flag)
-    image_data = image_handler.ImageData(
-            api_key, 
-            local_db, 
-            output_path, 
-            images_path, 
-            output_title_images_flag)
+    # local_db = local_db_handler.LocalDB(
+    #     my_settings, 
+    #     # engine,
+    #     # global_adult_content_flag,
+    #     # loaded_titles_sql=loaded_titles_sql,
+    #     # loaded_title_cast_sql=loaded_title_cast_sql,
+    #     # loaded_persons_sql=loaded_persons_sql,
+    #     # loaded_title_images_sql=loaded_title_images_sql,
+    #     # favorite_persons_sql=favorite_persons_sql,
+    #     # search_terms_sql=search_terms_sql,
+    #     # title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
+    #     # titles_missing_cast_sql=titles_missing_cast_sql,
+    #     # titles_missing_keywords_sql=titles_missing_keywords_sql,
+    #     # persons_missing_sql=persons_missing_sql
+    # )
+    # movie_data = movie_handler.MovieData(
+    #     my_settings, 
+    #     # api_key, 
+    #     local_db, 
+    #     # output_path, 
+    #     # output_titles_flag, 
+    #     # output_title_genres_flag, 
+    #     # output_genres_flag, 
+    #     # output_title_spoken_languages_flag, 
+    #     # output_spoken_languages_flag, 
+    #     # output_title_production_countries_flag, 
+    #     # output_production_countries_flag, 
+    #     # output_title_production_companies_flag, 
+    #     # output_production_companies_flag, 
+    #     # output_title_collections_flag, 
+    #     # output_collections_flag, 
+    #     # output_title_keywords_flag, 
+    #     # output_keywords_flag, 
+    #     # output_title_removed_flag
+    # )
+    # person_data = person_handler.PersonData(
+    #     my_settings, 
+    #     # api_key, 
+    #     local_db, 
+    #     # output_path, 
+    #     # output_persons_flag, 
+    #     # output_person_aka_flag, 
+    #     # output_title_cast_flag, 
+    #     # output_person_removed_flag
+    #     )
+    # image_data = image_handler.ImageData(
+    #     my_settings, 
+    #     # api_key, 
+    #     local_db, 
+    #     # output_path, 
+    #     # images_path, 
+    #     # output_title_images_flag
+    #     )
     
     if function == 'api_listener':
-        run_flask_app(host=host, port=port)
+        run_flask_app(host=host, port=port, verbose_flag=verbose_flag)
+    elif function == 'rebuild_settings':
+        rebuild_settings()
     elif function == 'display_missing_counts':
-        display_missing_counts(local_db)
-        return
+        display_missing_counts()
     elif function == 'get_movies_updated_yesterday':
         print_job_start()
         get_movies_updated_yesterday(original_language=original_language, min_runtime=min_runtime, adult_content_flag=adult_content_flag)
@@ -417,18 +476,18 @@ def call_function(
         print_job_end()
     elif function == 'get_missing_title_keywords':
         print_job_start()
-        display_missing_counts(local_db)
-        get_missing_title_keywords(adult_content_flag=adult_content_flag, row_limit=row_limit)
+        display_missing_counts()
+        get_missing_title_keywords(tmdb_id_list=tmdb_id_list, adult_content_flag=adult_content_flag, row_limit=row_limit)
         print_job_end()
     elif function == 'get_missing_persons':
         print_job_start()
-        display_missing_counts(local_db)
-        get_missing_persons(adult_content_flag=adult_content_flag, row_limit=row_limit)
+        display_missing_counts()
+        get_missing_persons(person_id_list=person_id_list, adult_content_flag=adult_content_flag, row_limit=row_limit)
         print_job_end()
     elif function == 'get_missing_title_cast':
         print_job_start()
-        display_missing_counts(local_db)
-        get_missing_title_cast(adult_content_flag=adult_content_flag, row_limit=row_limit)
+        display_missing_counts()
+        get_missing_title_cast(tmdb_id_list=tmdb_id_list, adult_content_flag=adult_content_flag, row_limit=row_limit)
         print_job_end()
     elif function == 'get_title_images_by_persons':
         print_job_start()
@@ -451,17 +510,17 @@ def call_function(
         reconcile_persons_against_full_list()
         print_job_end()
 
-def display_missing_counts(local_db):
-    # print(f'Global Adult Content Flag: {global_adult_content_flag}')
-    print(f'Session Adult Content Flag: {local_db.adult_content_flag}')
+def display_missing_counts():
+    # global local_db
+    print(f'Session Adult Content Flag: {local_db.global_adult_content_flag}')
     print(f'Missing Cast: {len(local_db.titles_missing_cast):,}')
-    print(f'Missing Keywords:  {len(local_db.titles_missing_keywords):,}')
-    print(f'Missing Persons:  {len(local_db.persons_missing):,}')
+    print(f'Missing Keywords: {len(local_db.titles_missing_keywords):,}')
+    print(f'Missing Persons: {len(local_db.persons_missing):,}')
 
 def get_all_movies():
     
     # suffix = datetime.datetime.now().strftime("%Y-%m-%d")
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
     
     df_titles = movie_data.get_full_movie_list()
 
@@ -470,7 +529,7 @@ def get_all_movies():
 
 def reconcile_movies_against_full_list():
     
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
     
     df_titles = movie_data.get_full_movie_list()
 
@@ -482,7 +541,7 @@ def reconcile_movies_against_full_list():
 def get_all_persons():
     
     # suffix = datetime.datetime.now().strftime("%Y-%m-%d")
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
     
     df_persons = person_data.get_full_person_list()
 
@@ -491,7 +550,7 @@ def get_all_persons():
 
 def reconcile_persons_against_full_list():
     
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
     
     df_persons = person_data.get_full_person_list()
 
@@ -503,10 +562,12 @@ def reconcile_persons_against_full_list():
 def handle_missing_data(suffix=None, tmdb_id_list=[], person_id_list=[]):
     
     if not suffix:
-        suffix = current_time_string
+        suffix = my_settings.current_time_string
     
     if not tmdb_id_list:
         tmdb_id_list = local_db.error_tmdb_id_list
+    
+    tmdb_id_list = [id for id in tmdb_id_list if id in local_db.loaded_titles]
     
     if tmdb_id_list:
         df_removed_titles = movie_data.check_title_exists(tmdb_id_list)
@@ -516,6 +577,8 @@ def handle_missing_data(suffix=None, tmdb_id_list=[], person_id_list=[]):
     
     if not person_id_list:
         person_id_list = local_db.error_person_id_list
+    
+    person_id_list = [id for id in person_id_list if id in local_db.loaded_persons]
     
     if person_id_list:
         df_removed_persons = person_data.check_person_exists(person_id_list)
@@ -531,10 +594,7 @@ def get_movies_updated_yesterday(original_language=None, min_runtime=None, adult
     suffix = f'changed_{formatted_date}'
 
     if not adult_content_flag:
-        if global_adult_content_flag:
-            adult_content_flag = global_adult_content_flag
-        else:
-            adult_content_flag = 'exclude'
+        adult_content_flag = my_settings.global_adult_content_flag
     
     changed_title_list = movie_data.get_movie_changes(formatted_date, adult_content_flag=adult_content_flag)
 
@@ -544,19 +604,17 @@ def get_movies_updated_yesterday(original_language=None, min_runtime=None, adult
         movie_data.process_title_data(df_titles, suffix)
     else:
         print('No New Titles')
+        my_api_response.api_message = 'No New Titles'
 
     handle_missing_data()
 
 def get_movies_by_favorite_actor(person_id_list=[], adult_content_flag=None, skip_loaded_titles=True, row_limit=None):
     """Retrieve movies starring favorite actors.  If a list is not provided, will use local db values."""
     # TESTED
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
 
     if not adult_content_flag:
-        if global_adult_content_flag:
-            adult_content_flag = global_adult_content_flag
-        else:
-            adult_content_flag = 'exclude'
+        adult_content_flag = my_settings.global_adult_content_flag
 
     if not person_id_list:
         person_id_list = local_db.favorite_persons
@@ -575,24 +633,23 @@ def get_movies_by_favorite_actor(person_id_list=[], adult_content_flag=None, ski
             movie_data.process_title_data(df_titles, suffix)
         else:
             print('No New Titles')
+            my_api_response.api_message = 'No New Titles'
     else:
         print('No New Titles')
+        my_api_response.api_message = 'No New Titles'
 
     handle_missing_data(suffix)
 
 def get_movies_by_search_terms(search_terms=[], original_language=None, adult_content_flag=None, skip_loaded_titles=True, row_limit=None):
     """Retrieve movies by search terms.  If a list is not provided, will use local db values."""
     
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
 
     if not adult_content_flag:
-        if global_adult_content_flag:
-            adult_content_flag = global_adult_content_flag
-        else:
-            adult_content_flag = 'exclude'
+        adult_content_flag = my_settings.global_adult_content_flag
 
-    if not original_language and global_original_language:
-        original_language = global_original_language
+    if not original_language and my_settings.global_original_language:
+        original_language = my_settings.global_original_language
     
     if not search_terms:
         search_terms = local_db.search_terms
@@ -611,23 +668,25 @@ def get_movies_by_search_terms(search_terms=[], original_language=None, adult_co
             movie_data.process_title_data(df_titles, suffix)
         else:
             print('No New Titles')
+            my_api_response.api_message = 'No New Titles'
     else:
         print('No New Titles')
+        my_api_response.api_message = 'No New Titles'
 
     handle_missing_data(suffix)
 
 def get_trending_movies(time_window=None, original_language=None, skip_loaded_titles=True, row_limit=None):
     """Retrieve movies by search terms.  If a list is not provided, will use local db values."""
     
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
 
     if time_window.lower() == 'day':
         time_window = 'day'
     else:
         time_window = 'week'
 
-    if not original_language and global_original_language:
-        original_language = global_original_language
+    if not original_language and my_settings.global_original_language:
+        original_language = my_settings.global_original_language
     
     if skip_loaded_titles:
         ids_to_skip = local_db.loaded_titles
@@ -643,25 +702,24 @@ def get_trending_movies(time_window=None, original_language=None, skip_loaded_ti
             movie_data.process_title_data(df_titles, suffix)
         else:
             print('No New Titles')
+            my_api_response.api_message = 'No New Titles'
     else:
         print('No New Titles')
+        my_api_response.api_message = 'No New Titles'
 
     handle_missing_data(suffix)
 
 def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=True, adult_content_flag=None, row_limit=None, backdrop_flag=False, poster_flag=False, logo_flag=False):
     # TESTED
     if not suffix:
-        suffix = current_time_string
+        suffix = my_settings.current_time_string
 
     if not adult_content_flag:
-        if global_adult_content_flag:
-            adult_content_flag = global_adult_content_flag
-        else:
-            adult_content_flag = 'exclude'
+        adult_content_flag = my_settings.global_adult_content_flag
     
     tmdb_id_list = person_data.get_titles_by_person(person_id_list, adult_content_flag=adult_content_flag)
     
-    # tmdb_id_list = [220030, 475176]
+    # tmdb_id_list = []
 
     if skip_loaded_titles:
         ids_to_skip = local_db.loaded_title_images
@@ -692,23 +750,22 @@ def get_title_images_by_persons(person_id_list, suffix=None, skip_loaded_titles=
             if len(missing_tmdb_ids) > 0:
                 df_titles = movie_data.get_title_data(missing_tmdb_ids)
                 if len(df_titles) > 0:
-                    movie_data.process_title_data(df_titles, suffix=current_time_string)
+                    movie_data.process_title_data(df_titles, suffix=my_settings.current_time_string)
         else:
             print('No images to process')
+            my_api_response.api_message = 'No images to process'
     else:
         print('No images to process')
+        my_api_response.api_message = 'No images to process'
 
     handle_missing_data(suffix)
 
 def get_missing_title_keywords(tmdb_id_list=[], adult_content_flag=None, row_limit=None):
     
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
 
     if not adult_content_flag:
-        if global_adult_content_flag:
-            adult_content_flag = global_adult_content_flag
-        else:
-            adult_content_flag = 'exclude'
+        adult_content_flag = my_settings.global_adult_content_flag
     
     if not tmdb_id_list:
         tmdb_id_list = local_db.titles_missing_keywords
@@ -720,20 +777,19 @@ def get_missing_title_keywords(tmdb_id_list=[], adult_content_flag=None, row_lim
             movie_data.process_title_keywords(df_title_keywords, suffix)
         else:
             print('No missing title keywords')
+            my_api_response.api_message = 'No missing title keywords'
     else:
         print('No missing title keywords')
+        my_api_response.api_message = 'No missing title keywords'
 
     handle_missing_data(suffix)
 
 def get_missing_persons(person_id_list=[], adult_content_flag=None, row_limit=None):
     
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
 
     if not adult_content_flag:
-        if global_adult_content_flag:
-            adult_content_flag = global_adult_content_flag
-        else:
-            adult_content_flag = 'exclude'
+        adult_content_flag = my_settings.global_adult_content_flag
 
     if not person_id_list:
         person_id_list = local_db.persons_missing
@@ -745,20 +801,19 @@ def get_missing_persons(person_id_list=[], adult_content_flag=None, row_limit=No
             person_data.process_persons(df_person, suffix)
         else:
             print('No missing persons')
+            my_api_response.api_message = 'No missing persons'
     else:
         print('No missing persons')
+        my_api_response.api_message = 'No missing persons'
 
     handle_missing_data(suffix)
 
 def get_missing_title_cast(tmdb_id_list=[], adult_content_flag=None, row_limit=None):
     
-    suffix = current_time_string
+    suffix = my_settings.current_time_string
 
     if not adult_content_flag:
-        if global_adult_content_flag:
-            adult_content_flag = global_adult_content_flag
-        else:
-            adult_content_flag = 'exclude'
+        adult_content_flag = my_settings.global_adult_content_flag
     
     if not tmdb_id_list:
         tmdb_id_list = local_db.titles_missing_cast
@@ -770,8 +825,10 @@ def get_missing_title_cast(tmdb_id_list=[], adult_content_flag=None, row_limit=N
             person_data.process_title_cast(df_title_cast, suffix)
         else:
             print('No missing title cast')
+            my_api_response.api_message = 'No missing title cast'
     else:
         print('No missing title cast')
+        my_api_response.api_message = 'No missing title cast'
 
     handle_missing_data(suffix)
 
@@ -782,7 +839,7 @@ def create_title_image_html(tmdb_id_list=[], html_path=None, html_name=None, bac
 def create_image_html_by_person(person_id_list, adult_content_flag=None, backdrop_required_flag=False):
     
     if not adult_content_flag:
-        adult_content_flag = global_adult_content_flag
+        adult_content_flag = my_settings.global_adult_content_flag
     
     for person in person_id_list:
         single_person_id_list = [person]
@@ -795,70 +852,99 @@ def create_image_html_by_person(person_id_list, adult_content_flag=None, backdro
         create_title_image_html(tmdb_id_list, html_name=(person_name + '.html'), backdrop_required_flag=backdrop_required_flag)
 
 def print_job_start():
-    global current_time
+    global my_settings
 
-    print(f'Job Start: {current_time}')
+    print(f'Job Start: {my_settings.current_time}')
 
 def print_job_end():
-    global current_time
+    global my_settings
     job_end_current_time, job_end_current_time_string, job_end_current_time_log = dtu.get_current_timestamp()
-    days, hours, minutes, seconds, job_duration = dtu.get_duration(current_time, job_end_current_time)
+    days, hours, minutes, seconds, job_duration = dtu.get_duration(my_settings.current_time, job_end_current_time)
     print(f'Job End: {job_end_current_time}\nTotal Duration: {job_duration}')
 
-def per_run_initializations():
-    global local_db, movie_data, person_data, image_data
+def per_run_initializations(my_settings):
+    import local_db_handler, movie_handler, person_handler, image_handler, api_response
+    global local_db, movie_data, person_data, image_data, my_api_response
 
+    my_api_response = api_response.ApiResponse()
     local_db = local_db_handler.LocalDB(
-        engine,
-        global_adult_content_flag,
-        loaded_titles_sql=loaded_titles_sql,
-        loaded_title_cast_sql=loaded_title_cast_sql,
-        loaded_persons_sql=loaded_persons_sql,
-        loaded_title_images_sql=loaded_title_images_sql,
-        favorite_persons_sql=favorite_persons_sql,
-        search_terms_sql=search_terms_sql,
-        title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
-        titles_missing_cast_sql=titles_missing_cast_sql,
-        titles_missing_keywords_sql=titles_missing_keywords_sql,
-        persons_missing_sql=persons_missing_sql
+        my_settings
+        # engine,
+        # global_adult_content_flag,
+        # loaded_titles_sql=loaded_titles_sql,
+        # loaded_title_cast_sql=loaded_title_cast_sql,
+        # loaded_persons_sql=loaded_persons_sql,
+        # loaded_title_images_sql=loaded_title_images_sql,
+        # favorite_persons_sql=favorite_persons_sql,
+        # search_terms_sql=search_terms_sql,
+        # title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
+        # titles_missing_cast_sql=titles_missing_cast_sql,
+        # titles_missing_keywords_sql=titles_missing_keywords_sql,
+        # persons_missing_sql=persons_missing_sql
     )
     movie_data = movie_handler.MovieData(
-        api_key, 
+        my_settings, 
+        # api_key, 
         local_db, 
-        output_path, 
-        output_titles_flag, 
-        output_title_genres_flag, 
-        output_genres_flag, 
-        output_title_spoken_languages_flag, 
-        output_spoken_languages_flag, 
-        output_title_production_countries_flag, 
-        output_production_countries_flag, 
-        output_title_production_companies_flag, 
-        output_production_companies_flag, 
-        output_title_collections_flag, 
-        output_collections_flag, 
-        output_title_keywords_flag, 
-        output_keywords_flag, 
-        output_title_removed_flag
+        my_api_response, 
+        # output_path, 
+        # output_titles_flag, 
+        # output_title_genres_flag, 
+        # output_genres_flag, 
+        # output_title_spoken_languages_flag, 
+        # output_spoken_languages_flag, 
+        # output_title_production_countries_flag, 
+        # output_production_countries_flag, 
+        # output_title_production_companies_flag, 
+        # output_production_companies_flag, 
+        # output_title_collections_flag, 
+        # output_collections_flag, 
+        # output_title_keywords_flag, 
+        # output_keywords_flag, 
+        # output_title_removed_flag
     )
     person_data = person_handler.PersonData(
-        api_key, 
+        # api_key, 
+        my_settings, 
         local_db, 
-        output_path, 
-        output_persons_flag, 
-        output_person_aka_flag, 
-        output_title_cast_flag, 
-        output_person_removed_flag)
+        my_api_response, 
+        # output_path, 
+        # output_persons_flag, 
+        # output_person_aka_flag, 
+        # output_title_cast_flag, 
+        # output_person_removed_flag
+        )
     image_data = image_handler.ImageData(
-        api_key, 
+        my_settings, 
+        # api_key, 
         local_db, 
-        output_path, 
-        images_path, 
-        output_title_images_flag)
+        my_api_response, 
+        # output_path, 
+        # images_path, 
+        # output_title_images_flag
+        )
+
+def rebuild_settings():
+    global my_settings
+    
+    my_settings = settings.Settings()
+    
+    per_run_initializations(my_settings)
 
 
 #%%
 os.environ['PYDEVD_WARN_EVALUATION_TIMEOUT'] = '2000'
+# Test Variables
+# os.environ['NEXUS_TMDB_CONFIG_PATH'] = ''
+# os.environ['NEXUS_TMDB_CONNECTION_CONFIG_PATH'] = ''
+# os.environ['NEXUS_TMDB_OUTPUT_FILES_CONFIG_PATH'] = ''
+# os.environ['NEXUS_TMDB_SQL_QUERIES_CONFIG_PATH'] = ''
+# os.environ['NEXUS_TMDB_FILE_OUTPUT_PATH'] = ''
+# os.environ['NEXUS_TMDB_IMAGES_OUTPUT_PATH'] = ''
+
+# os.environ['NEXUS_TMDB_TARGET_DB_PASSWORD'] = ''
+# os.environ['NEXUS_TMDB_API_KEY'] = ''
+
 # run_from_command_line = os.getenv("PYTHON_ISATTY", "True").lower() == "true" and sys.stdin.isatty()
 # if 'KUBERNETES_SERVICE_HOST' in os.environ:
 #     run_from_command_line = True
@@ -871,218 +957,19 @@ if 'KUBERNETES_SERVICE_HOST' in os.environ:
 # if DEBUGGING_MODE:
 #     print(f'DEBUGGING_MODE: {DEBUGGING_MODE}')
 
-# # current_dir = os.getcwd()
-# # current_dir = os.path.dirname(os.path.abspath(__file__))
-# current_dir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-# # print(current_dir)
-# # project_dir = current_dir
-
-# api_result = None
-# api_error_flag = None
-# api_error_message = None
-
-# s3_config_path = Path(current_dir).parent.parent / 'data' / 'Config'
-# config_path = None
-# if s3_config_path.exists():
-#     ini_files = [entry for entry in os.scandir(s3_config_path) if entry.is_file() and entry.name.endswith('.ini')]
-#     if len(ini_files) >= 3:
-#         config_path = Path(current_dir).parent.parent / 'data' / 'Config'
-# if not config_path:
-#     config_path = Path(current_dir).parent.parent / 'config'
-# app_config_path = config_path / "app_config.ini"
-# connection_config_path = config_path / "connections_config.ini"
-# output_file_config_path = config_path / "output_files_config.ini"
-# sql_queries_config_path = config_path / "sql_queries"
-
-# # read_app_config_settings
-# (
-#     output_path, 
-#     images_path, 
-#     # log_file_path, 
-#     # password_method, 
-#     # password_access_key, 
-#     # password_secret_key, 
-#     # password_endpoint_url, 
-#     # password_region_name, 
-#     # password_password_path, 
-#     # read_chunk_size, 
-#     # archive_flag, 
-#     # logging_flag, 
-#     # log_archive_expire_days, 
-#     global_original_language, 
-#     global_adult_content_flag
-#     ) = conn.read_app_config_settings(app_config_path)
-
-# if global_adult_content_flag and global_adult_content_flag not in ('include', 'exclude', 'only'):
-#     global_adult_content_flag = 'exclude'
-
-# db_target_config = 'target_connection'
-# # read_connection_config_settings
-# (
-#     connect_type, 
-#     server_address, 
-#     server_port, 
-#     database_name, 
-#     # schema, 
-#     db_password_method, 
-#     db_password_access_key, 
-#     db_password_secret_key, 
-#     db_password_endpoint_url, 
-#     db_password_region_name, 
-#     db_password_password_path, 
-#     db_user_name, 
-#     db_secret_key
-#     ) = conn.read_connection_config_settings(connection_config_path, db_target_config)
-
-# db_password = None
-
-# if 'NEXUS_TDR_TARGET_DB_PASSWORD' in os.environ:
-#     db_password = os.environ['NEXUS_TDR_TARGET_DB_PASSWORD']
-# else:
-#     db_password = pw.get_password(
-#         db_password_method, 
-#         password_key=db_secret_key, 
-#         account_name=db_user_name, 
-#         access_key=db_password_access_key, 
-#         secret_key=db_password_secret_key, 
-#         endpoint_url=db_password_endpoint_url, 
-#         region_name=db_password_region_name, 
-#         password_path=db_password_password_path)
-
-# try:
-#     engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
-# except Exception as e:
-#     engine = None
-
-# api_source_config = 'tmdb_api_connection'
-# # read_connection_config_settings
-# (
-#     api_password_method, 
-#     api_password_access_key, 
-#     api_password_secret_key, 
-#     api_password_endpoint_url, 
-#     api_password_region_name, 
-#     api_password_password_path, 
-#     api_user_name, 
-#     api_secret_key
-#     ) = conn.read_connection_config_settings(connection_config_path, api_source_config)
-# # api_key = pw.get_password(api_password_method, password_key=api_secret_key, account_name=api_user_name)
-
-# api_key = None
-
-# if 'NEXUS_TMDB_API_KEY' in os.environ:
-#     api_key = os.environ['NEXUS_TMDB_API_KEY']
-# else:
-#     api_key = pw.get_password(
-#         api_password_method, 
-#         password_key=api_secret_key, 
-#         account_name=api_user_name, 
-#         access_key=api_password_access_key, 
-#         secret_key=api_password_secret_key, 
-#         endpoint_url=api_password_endpoint_url, 
-#         region_name=api_password_region_name, 
-#         password_path=api_password_password_path)
-
-# # read_sql_queries
-# (
-#     loaded_titles_sql, 
-#     loaded_title_cast_sql, 
-#     loaded_persons_sql, 
-#     loaded_title_images_sql, 
-#     favorite_persons_sql, 
-#     search_terms_sql, 
-#     title_images_by_favorite_persons_sql, 
-#     titles_missing_cast_sql, 
-#     titles_missing_keywords_sql, 
-#     persons_missing_sql
-#     ) = misc.read_sql_queries(sql_queries_config_path)
-# # loaded_titles_sql, loaded_title_cast_sql, loaded_persons_sql, loaded_title_images_sql, favorite_persons_sql, search_terms_sql, titles_missing_cast_sql, titles_missing_keywords_sql, persons_missing_sql = conn.read_sql_queries(sql_queries_config_path)
-
-# # read_output_file_flags
-# (
-#     output_titles_flag, 
-#     output_title_genres_flag, 
-#     output_genres_flag, 
-#     output_title_spoken_languages_flag, 
-#     output_spoken_languages_flag, 
-#     output_title_production_countries_flag, 
-#     output_production_countries_flag, 
-#     output_title_production_companies_flag, 
-#     output_production_companies_flag, 
-#     output_title_collections_flag, 
-#     output_collections_flag, 
-#     output_title_keywords_flag, 
-#     output_keywords_flag, 
-#     output_persons_flag, 
-#     output_person_aka_flag, 
-#     output_title_cast_flag, 
-#     output_title_images_flag, 
-#     output_person_removed_flag, 
-#     output_title_removed_flag
-#     ) = conn.read_output_file_flags(output_file_config_path)
-
-# current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
-
-my_settings = settings.Settings()
-
+my_settings = None
+my_api_response = None
 local_db = None
 movie_data = None
 person_data = None
 image_data = None
-
-# local_db = local_db_handler.LocalDB(
-#     engine,
-#     global_adult_content_flag,
-#     loaded_titles_sql=loaded_titles_sql,
-#     loaded_title_cast_sql=loaded_title_cast_sql,
-#     loaded_persons_sql=loaded_persons_sql,
-#     loaded_title_images_sql=loaded_title_images_sql,
-#     favorite_persons_sql=favorite_persons_sql,
-#     search_terms_sql=search_terms_sql,
-#     title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
-#     titles_missing_cast_sql=titles_missing_cast_sql,
-#     titles_missing_keywords_sql=titles_missing_keywords_sql,
-#     persons_missing_sql=persons_missing_sql
-# )
-# movie_data = movie_handler.MovieData(
-#     api_key, 
-#     local_db, 
-#     output_path, 
-#     output_titles_flag, 
-#     output_title_genres_flag, 
-#     output_genres_flag, 
-#     output_title_spoken_languages_flag, 
-#     output_spoken_languages_flag, 
-#     output_title_production_countries_flag, 
-#     output_production_countries_flag, 
-#     output_title_production_companies_flag, 
-#     output_production_companies_flag, 
-#     output_title_collections_flag, 
-#     output_collections_flag, 
-#     output_title_keywords_flag, 
-#     output_keywords_flag, 
-#     output_title_removed_flag
-# )
-# person_data = person_handler.PersonData(
-#     api_key, 
-#     local_db, 
-#     output_path, 
-#     output_persons_flag, 
-#     output_person_aka_flag, 
-#     output_title_cast_flag, 
-#     output_person_removed_flag)
-# image_data = image_handler.ImageData(
-#     api_key, 
-#     local_db, 
-#     output_path, 
-#     images_path, 
-#     output_title_images_flag)
+rebuild_settings()
 
 #%%
 
 if __name__ == '__main__':
     if not DEBUGGING_MODE:
-        per_run_initializations()
+        per_run_initializations(my_settings)
         parse_command_run_arguments()
     else:
         import local_db_handler, movie_handler, person_handler, image_handler
@@ -1090,58 +977,10 @@ if __name__ == '__main__':
         # current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
 
         # parse_command_run_arguments()
-        
-        print_job_start()
 
         per_run_initializations(my_settings)
-
-        # local_db = local_db_handler.LocalDB(
-        #     engine,
-        #     global_adult_content_flag,
-        #     loaded_titles_sql=loaded_titles_sql,
-        #     loaded_title_cast_sql=loaded_title_cast_sql,
-        #     loaded_persons_sql=loaded_persons_sql,
-        #     loaded_title_images_sql=loaded_title_images_sql,
-        #     favorite_persons_sql=favorite_persons_sql,
-        #     search_terms_sql=search_terms_sql,
-        #     title_images_by_favorite_persons_sql=title_images_by_favorite_persons_sql,
-        #     titles_missing_cast_sql=titles_missing_cast_sql,
-        #     titles_missing_keywords_sql=titles_missing_keywords_sql,
-        #     persons_missing_sql=persons_missing_sql
-        # )
-        # movie_data = movie_handler.MovieData(
-        #     api_key, 
-        #     local_db, 
-        #     output_path, 
-        #     output_titles_flag, 
-        #     output_title_genres_flag, 
-        #     output_genres_flag, 
-        #     output_title_spoken_languages_flag, 
-        #     output_spoken_languages_flag, 
-        #     output_title_production_countries_flag, 
-        #     output_production_countries_flag, 
-        #     output_title_production_companies_flag, 
-        #     output_production_companies_flag, 
-        #     output_title_collections_flag, 
-        #     output_collections_flag, 
-        #     output_title_keywords_flag, 
-        #     output_keywords_flag, 
-        #     output_title_removed_flag
-        # )
-        # person_data = person_handler.PersonData(
-        #     api_key, 
-        #     local_db, 
-        #     output_path, 
-        #     output_persons_flag, 
-        #     output_person_aka_flag, 
-        #     output_title_cast_flag, 
-        #     output_person_removed_flag)
-        # image_data = image_handler.ImageData(
-        #     api_key, 
-        #     local_db, 
-        #     output_path, 
-        #     images_path, 
-        #     output_title_images_flag)
+        
+        print_job_start()
 
         # movie_data.get_title_data([1089679])
 
@@ -1159,14 +998,14 @@ if __name__ == '__main__':
         # create_image_html_by_person(local_db.favorite_persons)
         # create_image_html_by_person(local_db.favorite_persons, backdrop_required_flag=True)
 
-        # print(local_db.functioning_engine_message)
+        # print(local_db.engine_status)
         # create_title_image_html()
-        # display_missing_counts(local_db)
+        # display_missing_counts()
 
         # get_movies_by_search_terms(original_language='en', skip_loaded_titles=True)#, row_limit=12)
         # get_trending_movies(time_window='week', original_language='en', skip_loaded_titles=True, row_limit=2_000)
 
-        # get_movies_by_favorite_actor([74252], adult_content_flag=True, ids_to_skip=loaded_titles)
+        # get_movies_by_favorite_actor([4065300], adult_content_flag='include', ids_to_skip=loaded_titles)
         # get_movies_by_favorite_actor(ids_to_skip=loaded_titles)
 
         # get_movies_updated_yesterday(original_language='en', adult_content_flag='include')
@@ -1193,7 +1032,8 @@ if __name__ == '__main__':
         # get_missing_title_cast(row_limit=100)
         # get_missing_persons(row_limit=1_000)
         # print(len(local_db.loaded_persons))
-        # get_missing_persons([1158])
+        # get_missing_persons([4065300])
+        get_missing_persons([-1])
         # print(len(local_db.loaded_persons))
 
         # get_missing_title_keywords(row_limit=200)

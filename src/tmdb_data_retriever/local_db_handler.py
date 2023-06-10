@@ -7,70 +7,72 @@ from nexus_utils import database_utils
 class LocalDB:
     def __init__(
             self, 
-            engine, 
-            adult_content_flag, 
-            loaded_titles_sql=None, 
-            loaded_title_cast_sql=None, 
-            loaded_persons_sql=None, 
-            loaded_title_images_sql=None, 
-            favorite_persons_sql=None, 
-            search_terms_sql=None, 
-            title_images_by_favorite_persons_sql=None,
-            titles_missing_cast_sql=None, 
-            titles_missing_keywords_sql=None, 
-            persons_missing_sql=None
+            my_settings
+            # engine, 
+            # global_adult_content_flag, 
+            # loaded_titles_sql=None, 
+            # loaded_title_cast_sql=None, 
+            # loaded_persons_sql=None, 
+            # loaded_title_images_sql=None, 
+            # favorite_persons_sql=None, 
+            # search_terms_sql=None, 
+            # title_images_by_favorite_persons_sql=None,
+            # titles_missing_cast_sql=None, 
+            # titles_missing_keywords_sql=None, 
+            # persons_missing_sql=None
         ):
 
-        self.engine = engine
-        functioning_engine = False
+        self.my_settings = my_settings
+        self.engine = self.my_settings.engine
+        self.functioning_engine = False
         self._engine_status = 'Unknown status'
         if self.engine is None:
             self._engine_status = 'DB Engine could not be built'
         else:
             try:
-                result = database_utils.check_engine_read(engine)
+                result = database_utils.check_engine_read(self.engine)
                 if result == 'Success':
-                    functioning_engine = True
+                    self.functioning_engine = True
                     self._engine_status = 'DB Engine Functional'
                 else:
                     self._engine_status = f'DB Engine failed:  {result}'
             except Exception as e:
                 self._engine_status = 'DB Engine failed to read from database'
             
-        self.adult_content_flag = adult_content_flag
+        self.global_adult_content_flag = self.my_settings.global_adult_content_flag
 
         self.error_tmdb_id_list = []
         self.error_person_id_list = []
 
-        if loaded_titles_sql:
-            self.loaded_titles_sql = loaded_titles_sql
+        if self.my_settings.loaded_titles_sql:
+            self.loaded_titles_sql = self.my_settings.loaded_titles_sql
 
-        if loaded_titles_sql:
-            self.loaded_title_cast_sql = loaded_title_cast_sql
+        if self.my_settings.loaded_title_cast_sql:
+            self.loaded_title_cast_sql = self.my_settings.loaded_title_cast_sql
 
-        if loaded_persons_sql:
-            self.loaded_persons_sql = loaded_persons_sql
+        if self.my_settings.loaded_persons_sql:
+            self.loaded_persons_sql = self.my_settings.loaded_persons_sql
 
-        if loaded_title_images_sql:
-            self.loaded_title_images_sql = loaded_title_images_sql
+        if self.my_settings.loaded_title_images_sql:
+            self.loaded_title_images_sql = self.my_settings.loaded_title_images_sql
 
-        if favorite_persons_sql:
-            self.favorite_persons_sql = favorite_persons_sql
+        if self.my_settings.favorite_persons_sql:
+            self.favorite_persons_sql = self.my_settings.favorite_persons_sql
 
-        if search_terms_sql:
-            self.search_terms_sql = search_terms_sql
+        if self.my_settings.search_terms_sql:
+            self.search_terms_sql = self.my_settings.search_terms_sql
 
-        if title_images_by_favorite_persons_sql:
-            self.title_images_by_favorite_persons_sql = title_images_by_favorite_persons_sql
+        if self.my_settings.title_images_by_favorite_persons_sql:
+            self.title_images_by_favorite_persons_sql = self.my_settings.title_images_by_favorite_persons_sql
 
-        if titles_missing_cast_sql:
-            self.titles_missing_cast_sql = titles_missing_cast_sql
+        if self.my_settings.titles_missing_cast_sql:
+            self.titles_missing_cast_sql = self.my_settings.titles_missing_cast_sql
 
-        if titles_missing_keywords_sql:
-            self.titles_missing_keywords_sql = titles_missing_keywords_sql
+        if self.my_settings.titles_missing_keywords_sql:
+            self.titles_missing_keywords_sql = self.my_settings.titles_missing_keywords_sql
 
-        if persons_missing_sql:
-            self.persons_missing_sql = persons_missing_sql
+        if self.my_settings.persons_missing_sql:
+            self.persons_missing_sql = self.my_settings.persons_missing_sql
         
         self._loaded_titles_checked_flag = False
         self._loaded_titles = []
@@ -97,7 +99,7 @@ class LocalDB:
         self._persons_missing_checked_flag = False
         self._persons_missing = []
 
-        if not functioning_engine:
+        if not self.functioning_engine:
             print(self._engine_status)
             self._loaded_titles_checked_flag = True
             self._loaded_titles_adult_checked_flag = True
@@ -341,9 +343,9 @@ class LocalDB:
 
                     if not df.empty:
                         df.columns = ['person_id', 'adult_flag']
-                        if self.adult_content_flag == 'exclude':
+                        if self.global_adult_content_flag == 'exclude':
                             self._favorite_persons = df[df['adult_flag'] == 'F']['person_id'].tolist()
-                        elif self.adult_content_flag == 'only':
+                        elif self.global_adult_content_flag == 'only':
                             self._favorite_persons = df[df['adult_flag'] == 'T']['person_id'].tolist()
                         else:
                             self._favorite_persons = df['person_id'].tolist()
@@ -435,9 +437,9 @@ class LocalDB:
 
                     if not df.empty:
                         df.columns = ['tmdb_id', 'adult_flag']
-                        if self.adult_content_flag == 'exclude':
+                        if self.global_adult_content_flag == 'exclude':
                             self._titles_missing_cast = df[df['adult_flag'] == 'F']['tmdb_id'].tolist()
-                        elif self.adult_content_flag == 'only':
+                        elif self.global_adult_content_flag == 'only':
                             self._titles_missing_cast = df[df['adult_flag'] == 'T']['tmdb_id'].tolist()
                         else:
                             self._titles_missing_cast = df['tmdb_id'].tolist()
@@ -469,9 +471,9 @@ class LocalDB:
 
                     if not df.empty:
                         df.columns = ['tmdb_id', 'adult_flag']
-                        if self.adult_content_flag == 'exclude':
+                        if self.global_adult_content_flag == 'exclude':
                             self._titles_missing_keywords = df[df['adult_flag'] == 'F']['tmdb_id'].tolist()
-                        elif self.adult_content_flag == 'only':
+                        elif self.global_adult_content_flag == 'only':
                             self._titles_missing_keywords = df[df['adult_flag'] == 'T']['tmdb_id'].tolist()
                         else:
                             self._titles_missing_keywords = df['tmdb_id'].tolist()
@@ -503,9 +505,9 @@ class LocalDB:
 
                     if not df.empty:
                         df.columns = ['person_id', 'adult_flag']
-                        if self.adult_content_flag == 'exclude':
+                        if self.global_adult_content_flag == 'exclude':
                             self._persons_missing = df[df['adult_flag'] == 'F']['person_id'].tolist()
-                        elif self.adult_content_flag == 'only':
+                        elif self.global_adult_content_flag == 'only':
                             self._persons_missing = df[df['adult_flag'] == 'T']['person_id'].tolist()
                         else:
                             self._persons_missing = df['person_id'].tolist()

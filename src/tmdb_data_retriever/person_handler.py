@@ -27,21 +27,26 @@ def cleanse_person_df(df):
 class PersonData:
     def __init__(
             self, 
-            api_key, 
+            my_settings, 
+            # api_key, 
             local_db, 
-            output_path, 
-            output_persons_flag=True, 
-            output_person_aka_flag=True, 
-            output_title_cast_flag=True, 
-            output_person_removed_flag=True):
+            api_response, 
+            # output_path, 
+            # output_persons_flag=True, 
+            # output_person_aka_flag=True, 
+            # output_title_cast_flag=True, 
+            # output_person_removed_flag=True
+            ):
         
-        self.api_key = api_key
+        self.my_settings = my_settings
+        self.api_key = self.my_settings.api_key
         self.local_db = local_db
-        self.output_path = output_path
-        self.output_persons_flag = output_persons_flag
-        self.output_person_aka_flag = output_person_aka_flag
-        self.output_title_cast_flag = output_title_cast_flag
-        self.output_person_removed_flag = output_person_removed_flag
+        self.api_response = api_response
+        self.output_path = self.my_settings.output_path
+        self.output_persons_flag = self.my_settings.output_persons_flag
+        self.output_person_aka_flag = self.my_settings.output_person_aka_flag
+        self.output_title_cast_flag = self.my_settings.output_title_cast_flag
+        self.output_person_removed_flag = self.my_settings.output_person_removed_flag
 
     def check_person_exists(self, error_person_id_list):
         
@@ -285,24 +290,44 @@ class PersonData:
 
             return df_person_aka
 
+        api_result = {'action':'process_persons'}
+        api_sub_results = []
+        
         df_person_aka = extract_person_aka(df_person)
 
         output_path = self.output_path
 
         if self.output_persons_flag:
-            misc.write_data_to_file(df_person, output_path + os.sep + 'tmdb_person', 'tmdb_person', suffix)
+            filename = misc.write_data_to_file(df_person, output_path + os.sep + 'tmdb_person', 'tmdb_person', suffix)
             # Update loaded persons list with person_ids being extracted
             self.local_db.loaded_persons = df_person['person_id'].tolist()
             self.local_db.loaded_persons_adult = df_person[df_person['adult'] == True]['person_id'].tolist()
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_person):,}"}
+            api_sub_results.append(api_sub_result)
         if self.output_person_aka_flag:
-            misc.write_data_to_file(df_person_aka, output_path + os.sep + 'tmdb_person_aka', 'tmdb_person_aka', suffix)
+            filename = misc.write_data_to_file(df_person_aka, output_path + os.sep + 'tmdb_person_aka', 'tmdb_person_aka', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_person_aka):,}"}
+            api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
 
     def process_person_data_subset(self, df_persons, suffix):
         """Accept a dataframe of data for all persons with limited fields"""
         
+        api_result = {'action':'process_all_persons'}
+        api_sub_results = []
+        
         output_path = self.output_path
 
-        misc.write_data_to_file(df_persons, output_path + os.sep + 'tmdb_person_full', 'tmdb_person_full', suffix)
+        filename = misc.write_data_to_file(df_persons, output_path + os.sep + 'tmdb_person_full', 'tmdb_person_full', suffix)
+        api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_persons):,}"}
+        api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
         
     # def get_title_cast(self, suffix, tmdb_id_list=[], row_limit=None):
 
@@ -321,17 +346,35 @@ class PersonData:
 
     def process_title_cast(self, df_title_cast, suffix):
 
+        api_result = {'action':'process_title_cast'}
+        api_sub_results = []
+        
         output_path = self.output_path
 
         if self.output_title_cast_flag:
-            misc.write_data_to_file(df_title_cast, output_path + os.sep + 'tmdb_title_cast', 'tmdb_title_cast', suffix)
+            filename = misc.write_data_to_file(df_title_cast, output_path + os.sep + 'tmdb_title_cast', 'tmdb_title_cast', suffix)
+        api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_cast):,}"}
+        api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
 
     def process_removed_persons(self, df_removed_persons, suffix):
 
+        api_result = {'action':'process_removed_persons'}
+        api_sub_results = []
+        
         output_path = self.output_path
 
         if self.output_person_removed_flag:
-            misc.write_data_to_file(df_removed_persons, output_path + os.sep + 'tmdb_person_removed', 'tmdb_person_removed', suffix)
+            filename = misc.write_data_to_file(df_removed_persons, output_path + os.sep + 'tmdb_person_removed', 'tmdb_person_removed', suffix)
+        api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_removed_persons):,}"}
+        api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
 
 # #%%
 # if __name__ == '__main__':
@@ -357,3 +400,5 @@ class PersonData:
 
 #     person_data.extract_missing_title_cast(current_time_string)
 #     #%%
+
+# %%

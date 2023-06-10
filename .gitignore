@@ -15,9 +15,11 @@ vscode/**
 **/api_endpoints/**
 launch.json
 ~$*.xls*
-image_page_builder.py
+test_api.py
+connection_utils.py
 
 # Temporary exclusions
+image_page_builder.py
 docker/**
 tests/*
 # Dockerfile

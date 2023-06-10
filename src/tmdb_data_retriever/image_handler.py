@@ -11,17 +11,22 @@ from src.tmdb_data_retriever.utils import misc_utils as misc
 class ImageData:
     def __init__(
             self, 
-            api_key, 
+            my_settings, 
+            # api_key, 
             local_db, 
-            output_path, 
-            image_path, 
-            output_title_images_flag=True):
+            api_response, 
+            # output_path, 
+            # images_path, 
+            # output_title_images_flag=True
+            ):
         
-        self.api_key = api_key
+        self.my_settings = my_settings
+        self.api_key = self.my_settings.api_key
         self.local_db = local_db
-        self.output_path = output_path
-        self.image_path = image_path
-        self.output_title_images_flag = output_title_images_flag
+        self.api_response = api_response
+        self.output_path = self.my_settings.output_path
+        self.images_path = self.my_settings.images_path
+        self.output_title_images_flag = self.my_settings.output_title_images_flag
 
     def get_image_data(self, tmdb_id_list, ids_to_skip=[], backdrop_flag=True, poster_flag=True, logo_flag=True):
         """Retrieve film data given a list of TMDB IDs"""
@@ -82,14 +87,23 @@ class ImageData:
     
     def process_images(self, df_images, suffix):
 
+        api_result = {'action':'process_images'}
+        api_sub_results = []
+        
         self.download_images(df_images)
 
         output_path = self.output_path
 
         if self.output_title_images_flag:
-            misc.write_data_to_file(df_images, output_path + os.sep + 'tmdb_title_image', 'tmdb_title_image', suffix)
+            filename = misc.write_data_to_file(df_images, output_path + os.sep + 'tmdb_title_image', 'tmdb_title_image', suffix)
             # Update loaded title images list with tmdb_ids being extracted
             self.local_db.loaded_title_images = df_images['tmdb_id'].tolist()
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_images):,}"}
+            api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
 
     def download_images(self, df_images):
 
@@ -103,19 +117,19 @@ class ImageData:
         try:
             for tmdb_id in tmdb_ids:
             
-                local_image_path = os.path.join(self.image_path, 'tmdb_id_' + str(tmdb_id))
+                local_images_path = os.path.join(self.images_path, 'tmdb_id_' + str(tmdb_id))
                 
-                if not os.path.exists(local_image_path):
-                    os.makedirs(local_image_path)
+                if not os.path.exists(local_images_path):
+                    os.makedirs(local_images_path)
 
                 df_images_tmdb_id = df_images[df_images['tmdb_id'] == tmdb_id].copy()
                 available_image_types = df_images_tmdb_id['image_type'].unique()
 
                 for image_type in available_image_types:
-                    local_image_path_subfolder = os.path.join(local_image_path, image_type)
+                    local_images_path_subfolder = os.path.join(local_images_path, image_type)
                     
-                    if not os.path.exists(local_image_path_subfolder):
-                        os.makedirs(local_image_path_subfolder)
+                    if not os.path.exists(local_images_path_subfolder):
+                        os.makedirs(local_images_path_subfolder)
 
                     image_num = 1
                     for index, image in df_images.iterrows():
@@ -123,7 +137,7 @@ class ImageData:
                             # tmdb_id = image['tmdb_id']
                             file_path = image['file_path']
                             local_file_name = str(tmdb_id) + '_' + image_type + '_' + str(image_num).zfill(2) + '_' + file_path[1:]
-                            local_file_path = os.path.join(local_image_path_subfolder, local_file_name)
+                            local_file_path = os.path.join(local_images_path_subfolder, local_file_name)
 
                             url = f'https://www.themoviedb.org/t/p/original{file_path}'
                             response = requests.get(url)
@@ -147,7 +161,7 @@ class ImageData:
     def create_title_image_html(self, tmdb_id_list=[], include_keywords=True, html_path=None, html_name=None, backdrop_required_flag=False):
 
         if not html_path:
-            html_path = self.image_path
+            html_path = self.images_path
         
         if len(html_name) == 0 or '.html' not in html_name:
             html_name = 'index.html'

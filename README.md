@@ -83,7 +83,7 @@ keyring.set_password("{user_name}", "{secret_key}", "my_db_password")
 ```
 
 Alternatively, if the below OS Environment variables are available, they will be used instead:
- - NEXUS_TDR_TARGET_DB_PASSWORD
+ - NEXUS_TMDB_TARGET_DB_PASSWORD
  - NEXUS_TMDB_API_KEY
 
 ## App Configuration
@@ -304,17 +304,26 @@ The application uses a number of function arguments with optional flags.  The fl
 
 ### Command-Line Flags
 
+* --api_host (-host): Host to launch API listener (default 'localhost')
+* --port (-p): Port to listen for API requests (default '5002')
+* --verbose_flag (-v): Whether to allow terminal output when in API listener mode
 * --original_language (-lang): Primary language spoken in the title.  Accepts 2 digit, lowercase iso standard codes
 * --min_runtime (-rt): Minimum title runtime.  Use with caution, as many titles erroneously use 1 minute as a placeholder
 * --adult_content_flag (-adult): Whether to include adult content in results.  Accepts "include" ("i"), "exclude" ("e") or "only" ("o")
 * --skip_loaded_titles (-skip): Add the "-skip" flag to avoid pulling titles already pulled previously.  Relies on the target DB connection capabilities discussed above
 * --search_terms (-search): Accepts multiple string arguments of keywords to search by
+* --tmdb_ids (-tid): Accepts multiple tmdb_id integer values
 * --person_ids (-pid): Accepts multiple person_id integer values
 * --row_limit (-rl):  Row limit to apply to requests.  Note that this won't always exactly reflect in the number of results that are returned, depending on the kind of data being retrieved.  Used primarily to limit number of requests sent to the TMDB API
 * --time_window (-tw): Accepts "day" ("d") or "week" ("w")
 
 ### Function Arguments
 
+* api_listener (api): Launch the app into API service mode
+    * --api_host
+    * --port
+    * --verbose_flag
+* rebuild_settings (rs): Rebuild app settings.  Useful if the app is running in API service mode, and a setting has been updated and needs to be reflected for future API requests
 * display_missing_counts (dmc): Display the current number of missing cast, keywords and persons
 * get_movies_updated_yesterday (gmuy): Retrieves movies changed yesterday
     * --original_language
@@ -337,12 +346,15 @@ The application uses a number of function arguments with optional flags.  The fl
     * --skip_loaded_titles
     * --row_limit
 * get_missing_title_keywords (gmtk): Retrieve keywords linkages for titles without any
+    * --tmdb_ids
     * --adult_content_flag
     * --row_limit
 * get_missing_persons (gmp): Retrieve missing persons referenced in the title cast data
+    * --person_ids
     * --adult_content_flag
     * --row_limit
 * get_missing_title_cast (gmtc): Retrieve cast linkages for titles without any
+    * --tmdb_ids
     * --adult_content_flag
     * --row_limit
 * get_all_movies (gam): Downloads the daily full movie list with a subset of fields

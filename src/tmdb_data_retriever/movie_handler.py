@@ -27,42 +27,47 @@ def cleanse_title_df(df):
 
 class MovieData:
     def __init__(
-        self, 
-        api_key, 
-        local_db, 
-        output_path, 
-        output_titles_flag=True, 
-        output_title_genres_flag=True, 
-        output_genres_flag=True, 
-        output_title_spoken_languages_flag=True, 
-        output_spoken_languages_flag=True, 
-        output_title_production_countries_flag=True, 
-        output_production_countries_flag=True, 
-        output_title_production_companies_flag=True, 
-        output_production_companies_flag=True, 
-        output_title_collections_flag=True, 
-        output_collections_flag=True, 
-        output_title_keywords_flag=True, 
-        output_keywords_flag=True, 
-        output_title_removed_flag=True):
+            self, 
+            my_settings, 
+            # api_key, 
+            local_db, 
+            api_response, 
+            # output_path, 
+            # output_titles_flag=True, 
+            # output_title_genres_flag=True, 
+            # output_genres_flag=True, 
+            # output_title_spoken_languages_flag=True, 
+            # output_spoken_languages_flag=True, 
+            # output_title_production_countries_flag=True, 
+            # output_production_countries_flag=True, 
+            # output_title_production_companies_flag=True, 
+            # output_production_companies_flag=True, 
+            # output_title_collections_flag=True, 
+            # output_collections_flag=True, 
+            # output_title_keywords_flag=True, 
+            # output_keywords_flag=True, 
+            # output_title_removed_flag=True
+            ):
 
-        self.api_key = api_key
+        self.my_settings = my_settings
+        self.api_key = self.my_settings.api_key
         self.local_db = local_db
-        self.output_path = output_path
-        self.output_titles_flag = output_titles_flag
-        self.output_title_genres_flag = output_title_genres_flag
-        self.output_genres_flag = output_genres_flag
-        self.output_title_spoken_languages_flag = output_title_spoken_languages_flag
-        self.output_spoken_languages_flag = output_spoken_languages_flag
-        self.output_title_production_countries_flag = output_title_production_countries_flag
-        self.output_production_countries_flag = output_production_countries_flag=True, 
-        self.output_title_production_companies_flag = output_title_production_companies_flag
-        self.output_production_companies_flag = output_production_companies_flag
-        self.output_title_collections_flag = output_title_collections_flag
-        self.output_collections_flag = output_collections_flag
-        self.output_title_keywords_flag = output_title_keywords_flag
-        self.output_keywords_flag = output_keywords_flag
-        self.output_title_removed_flag = output_title_removed_flag
+        self.api_response = api_response
+        self.output_path = self.my_settings.output_path
+        self.output_titles_flag = self.my_settings.output_titles_flag
+        self.output_title_genres_flag = self.my_settings.output_title_genres_flag
+        self.output_genres_flag = self.my_settings.output_genres_flag
+        self.output_title_spoken_languages_flag = self.my_settings.output_title_spoken_languages_flag
+        self.output_spoken_languages_flag = self.my_settings.output_spoken_languages_flag
+        self.output_title_production_countries_flag = self.my_settings.output_title_production_countries_flag
+        self.output_production_countries_flag = self.my_settings.output_production_countries_flag
+        self.output_title_production_companies_flag = self.my_settings.output_title_production_companies_flag
+        self.output_production_companies_flag = self.my_settings.output_production_companies_flag
+        self.output_title_collections_flag = self.my_settings.output_title_collections_flag
+        self.output_collections_flag = self.my_settings.output_collections_flag
+        self.output_title_keywords_flag = self.my_settings.output_title_keywords_flag
+        self.output_keywords_flag = self.my_settings.output_keywords_flag
+        self.output_title_removed_flag = self.my_settings.output_title_removed_flag
 
     def check_title_exists(self, error_tmdb_id_list):
         
@@ -584,6 +589,9 @@ class MovieData:
 
             return df_title_collection, df_collection
 
+        api_result = {'action':'process_titles'}
+        api_sub_results = []
+        
         df_title_genre, df_genre = extract_genres(df_titles)
 
         df_title_spoken_language, df_spoken_language = extract_spoken_languages(df_titles)
@@ -597,37 +605,62 @@ class MovieData:
         output_path = self.output_path
 
         if self.output_titles_flag:
-            misc.write_data_to_file(df_titles, output_path + os.sep + 'tmdb_title', 'tmdb_title', suffix)
+            filename = misc.write_data_to_file(df_titles, output_path + os.sep + 'tmdb_title', 'tmdb_title', suffix)
             # Update loaded titles list with tmdb_ids being extracted
             self.local_db.loaded_titles = df_titles['tmdb_id'].tolist()
             self.local_db.loaded_titles_adult = df_titles[df_titles['adult'] == True]['tmdb_id'].tolist()
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_titles):,}"}
+            api_sub_results.append(api_sub_result)
         if self.output_title_genres_flag:
-            misc.write_data_to_file(df_title_genre, output_path + os.sep + 'tmdb_title_genre', 'tmdb_title_genre', suffix)
+            filename = misc.write_data_to_file(df_title_genre, output_path + os.sep + 'tmdb_title_genre', 'tmdb_title_genre', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_genre):,}"}
         if self.output_genres_flag:
-            misc.write_data_to_file(df_genre, output_path + os.sep + 'tmdb_genre', 'tmdb_genre', suffix)
+            filename = misc.write_data_to_file(df_genre, output_path + os.sep + 'tmdb_genre', 'tmdb_genre', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_genre):,}"}
         if self.output_title_spoken_languages_flag:
-            misc.write_data_to_file(df_title_spoken_language, output_path + os.sep + 'tmdb_title_spoken_language', 'tmdb_title_spoken_language', suffix)
+            filename = misc.write_data_to_file(df_title_spoken_language, output_path + os.sep + 'tmdb_title_spoken_language', 'tmdb_title_spoken_language', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_spoken_language):,}"}
         if self.output_spoken_languages_flag:
-            misc.write_data_to_file(df_spoken_language, output_path + os.sep + 'tmdb_spoken_language', 'tmdb_spoken_language', suffix)
+            filename = misc.write_data_to_file(df_spoken_language, output_path + os.sep + 'tmdb_spoken_language', 'tmdb_spoken_language', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_spoken_language):,}"}
         if self.output_title_production_countries_flag:
-            misc.write_data_to_file(df_title_production_country, output_path + os.sep + 'tmdb_title_production_country', 'tmdb_title_production_country', suffix)
+            filename = misc.write_data_to_file(df_title_production_country, output_path + os.sep + 'tmdb_title_production_country', 'tmdb_title_production_country', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_production_country):,}"}
         if self.output_production_countries_flag:
-            misc.write_data_to_file(df_production_country, output_path + os.sep + 'tmdb_production_country', 'tmdb_production_country', suffix)
+            filename = misc.write_data_to_file(df_production_country, output_path + os.sep + 'tmdb_production_country', 'tmdb_production_country', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_production_country):,}"}
         if self.output_title_production_companies_flag:
-            misc.write_data_to_file(df_title_production_company, output_path + os.sep + 'tmdb_title_production_company', 'tmdb_title_production_company', suffix)
+            filename = misc.write_data_to_file(df_title_production_company, output_path + os.sep + 'tmdb_title_production_company', 'tmdb_title_production_company', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_production_company):,}"}
         if self.output_production_companies_flag:
-            misc.write_data_to_file(df_production_company, output_path + os.sep + 'tmdb_production_company', 'tmdb_production_company', suffix)
+            filename = misc.write_data_to_file(df_production_company, output_path + os.sep + 'tmdb_production_company', 'tmdb_production_company', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_production_company):,}"}
         if self.output_title_collections_flag:
-            misc.write_data_to_file(df_title_collection, output_path + os.sep + 'tmdb_title_collection', 'tmdb_title_collection', suffix)
+            filename = misc.write_data_to_file(df_title_collection, output_path + os.sep + 'tmdb_title_collection', 'tmdb_title_collection', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_collection):,}"}
         if self.output_collections_flag:
-            misc.write_data_to_file(df_collection, output_path + os.sep + 'tmdb_collection', 'tmdb_collection', suffix)
+            filename = misc.write_data_to_file(df_collection, output_path + os.sep + 'tmdb_collection', 'tmdb_collection', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_collection):,}"}
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
 
     def process_title_data_subset(self, df_titles, suffix):
         """Accept a dataframe of data for all titles with limited fields"""
         
+        api_result = {'action':'process_all_titles'}
+        api_sub_results = []
+        
         output_path = self.output_path
 
-        misc.write_data_to_file(df_titles, output_path + os.sep + 'tmdb_title_full', 'tmdb_title_full', suffix)
+        filename = misc.write_data_to_file(df_titles, output_path + os.sep + 'tmdb_title_full', 'tmdb_title_full', suffix)
+        api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_titles):,}"}
+        api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
         
     def get_title_keyword_data(self, tmdb_id_list, row_limit=None):
         """Retrieve film keywords given a list of TMDB IDs"""
@@ -710,21 +743,41 @@ class MovieData:
 
             return df_title_keyword, df_keyword
 
+        api_result = {'action':'process_title_keywords'}
+        api_sub_results = []
+        
         df_title_keyword, df_keyword = extract_keywords(df_title_keywords)
 
         output_path = self.output_path
 
         if self.output_title_keywords_flag:
-            misc.write_data_to_file(df_title_keyword, output_path + os.sep + 'tmdb_title_keyword', 'tmdb_title_keyword', suffix)
+            filename = misc.write_data_to_file(df_title_keyword, output_path + os.sep + 'tmdb_title_keyword', 'tmdb_title_keyword', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_keyword):,}"}
+            api_sub_results.append(api_sub_result)
         if self.output_keywords_flag:
-            misc.write_data_to_file(df_keyword, output_path + os.sep + 'tmdb_keyword', 'tmdb_keyword', suffix)
+            filename = misc.write_data_to_file(df_keyword, output_path + os.sep + 'tmdb_keyword', 'tmdb_keyword', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_keyword):,}"}
+            api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
 
     def process_removed_titles(self, df_removed_titles, suffix):
 
+        api_result = {'action':'process_removed_titles'}
+        api_sub_results = []
+        
         output_path = self.output_path
 
         if self.output_title_removed_flag:
-            misc.write_data_to_file(df_removed_titles, output_path + os.sep + 'tmdb_title_removed', 'tmdb_title_removed', suffix)
+            filename = misc.write_data_to_file(df_removed_titles, output_path + os.sep + 'tmdb_title_removed', 'tmdb_title_removed', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_removed_titles):,}"}
+            api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
 
 
 # #%%

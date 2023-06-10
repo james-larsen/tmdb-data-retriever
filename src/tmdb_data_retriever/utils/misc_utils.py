@@ -16,6 +16,8 @@ def write_data_to_file(df, output_path, base_filename, suffix=None):
 
     df.to_csv(output_file, sep='\t', index=False, header=True, encoding='utf-8', quoting=1)
 
+    return filename + '.csv'
+
 def cleanse_value(value):
     if isinstance(value, str):
         value = value.replace('\r\n', ' | ')
@@ -49,42 +51,42 @@ def format_dates(start_date=None, end_date=None):
 
     return date_list
 
-def read_sql_queries(sql_queries_path):
-    local_folder_path = sql_queries_path.with_name(sql_queries_path.name + "_local")
+# def read_sql_queries(sql_queries_path):
+#     local_folder_path = sql_queries_path.with_name(sql_queries_path.name + "_local")
     
-    if local_folder_path.exists() and local_folder_path.is_dir():
-        sql_queries_path = local_folder_path
+#     if local_folder_path.exists() and local_folder_path.is_dir():
+#         sql_queries_path = local_folder_path
     
-    sql_files = glob.glob(str(sql_queries_path / "*.sql"))
+#     sql_files = glob.glob(str(sql_queries_path / "*.sql"))
 
-    sql_queries = {}
+#     sql_queries = {}
 
-    for file_path in sql_files:
-        file_name = Path(file_path).stem
-        with open(file_path, "r") as file:
-            query = file.read()
-            sql_queries[file_name] = query
+#     for file_path in sql_files:
+#         file_name = Path(file_path).stem
+#         with open(file_path, "r") as file:
+#             query = file.read()
+#             sql_queries[file_name] = query
 
-    loaded_titles_sql = sql_queries.get("loaded_titles_sql")
-    loaded_title_cast_sql = sql_queries.get("loaded_title_cast_sql")
-    loaded_persons_sql = sql_queries.get("loaded_persons_sql")
-    loaded_title_images_sql = sql_queries.get("loaded_title_images_sql")
-    favorite_persons_sql = sql_queries.get("favorite_persons_sql")
-    search_terms_sql = sql_queries.get("search_terms_sql")
-    title_images_by_favorite_persons_sql = sql_queries.get("title_images_by_favorite_persons_sql")
-    titles_missing_cast_sql = sql_queries.get("titles_missing_cast_sql")
-    titles_missing_keywords_sql = sql_queries.get("titles_missing_keywords_sql")
-    persons_missing_sql = sql_queries.get("persons_missing_sql")
+#     loaded_titles_sql = sql_queries.get("loaded_titles_sql")
+#     loaded_title_cast_sql = sql_queries.get("loaded_title_cast_sql")
+#     loaded_persons_sql = sql_queries.get("loaded_persons_sql")
+#     loaded_title_images_sql = sql_queries.get("loaded_title_images_sql")
+#     favorite_persons_sql = sql_queries.get("favorite_persons_sql")
+#     search_terms_sql = sql_queries.get("search_terms_sql")
+#     title_images_by_favorite_persons_sql = sql_queries.get("title_images_by_favorite_persons_sql")
+#     titles_missing_cast_sql = sql_queries.get("titles_missing_cast_sql")
+#     titles_missing_keywords_sql = sql_queries.get("titles_missing_keywords_sql")
+#     persons_missing_sql = sql_queries.get("persons_missing_sql")
 
-    return(
-        loaded_titles_sql, 
-        loaded_title_cast_sql, 
-        loaded_persons_sql, 
-        loaded_title_images_sql, 
-        favorite_persons_sql, 
-        search_terms_sql, 
-        title_images_by_favorite_persons_sql, 
-        titles_missing_cast_sql, 
-        titles_missing_keywords_sql, 
-        persons_missing_sql
-    )
+#     return(
+#         loaded_titles_sql, 
+#         loaded_title_cast_sql, 
+#         loaded_persons_sql, 
+#         loaded_title_images_sql, 
+#         favorite_persons_sql, 
+#         search_terms_sql, 
+#         title_images_by_favorite_persons_sql, 
+#         titles_missing_cast_sql, 
+#         titles_missing_keywords_sql, 
+#         persons_missing_sql
+#     )
