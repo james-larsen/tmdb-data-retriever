@@ -108,10 +108,12 @@ class Settings:
 
         db_password = os.getenv('NEXUS_TMDB_TARGET_DB_PASSWORD', db_password)
         
-        try:
-            self.engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
-        except Exception as e:
-            self.engine = None
+        self.engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
+        
+        # try:
+        #     self.engine = build_engine(connect_type, server_address, server_port, database_name, db_user_name, db_password)#, schema)
+        # except Exception as e:
+        #     self.engine = None
 
         api_source_config = 'tmdb_api_connection'
         # read_connection_config_settings
@@ -197,6 +199,9 @@ class Settings:
     #         return str(path_obj)
     #     else:
     #         return None
+
+    def reset_start_time(self):
+        self.current_time, self.current_time_string, self.current_time_log = dtu.get_current_timestamp()
 
     def read_app_config_settings(self, _app_config_path):
         """Read app configuration parameters"""

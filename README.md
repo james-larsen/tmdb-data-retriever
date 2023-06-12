@@ -15,6 +15,7 @@ You will need to acquire a free TMDB API key to use this application.  Details c
   - [Command-Line Flags](#command-line-flags)
   - [Function Arguments](#function-arguments)
   - [Example Usage](#example-usage)
+- [API Listener Mode](#api-listener-mode)
 - [Docker Deployment with S3](#docker-deployment-with-s3)
   - [S3 Folder Structure](#s3-folder-structure)
   - [Deploying the Container](#deploying-the-container)
@@ -66,10 +67,10 @@ pip3 install -r requirements.txt
 From the package root:
 
 ```python
-pip3 install .
+pip3 install -e .
 ```
 
-**Note that this is needed so relative imports will function**
+**Note that this is needed so relative imports will function properly**
 
 ## Passwords
 
@@ -83,8 +84,8 @@ keyring.set_password("{user_name}", "{secret_key}", "my_db_password")
 ```
 
 Alternatively, if the below OS Environment variables are available, they will be used instead:
- - NEXUS_TMDB_TARGET_DB_PASSWORD
  - NEXUS_TMDB_API_KEY
+ - NEXUS_TMDB_TARGET_DB_PASSWORD
 
 ## App Configuration
 
@@ -97,12 +98,12 @@ Controls the general behavior of the application (example values provided)
 ``` python
 [app_settings]
 # Root location to place extracted flat files
-load_file_path = 
+load_file_path = path/to/deliver/files
 # Root location to place extracted images
-images_path = 
+images_path = path/to/images
 # Restrict results to a specific language (2-digit iso code, Eg. "en")
 original_language = en
-# Whether to include adult content in results.  Accepts "Include", "Exclude" and "Only"
+# Whether to include adult content in results.  Accepts "Include", "Exclude" or "Only"
 adult_content_flag = Exclude
 ```
 
@@ -307,7 +308,7 @@ The application uses a number of function arguments with optional flags.  The fl
 * --api_host (-host): Host to launch API listener (default 'localhost')
 * --port (-p): Port to listen for API requests (default '5002')
 * --verbose_flag (-v): Whether to allow terminal output when in API listener mode
-* --original_language (-lang): Primary language spoken in the title.  Accepts 2 digit, lowercase iso standard codes
+* --original_language (-lang): Primary language spoken in the title.  Accepts 2 digit, lowercase iso standard codes (Eg. "en")
 * --min_runtime (-rt): Minimum title runtime.  Use with caution, as many titles erroneously use 1 minute as a placeholder
 * --adult_content_flag (-adult): Whether to include adult content in results.  Accepts "include" ("i"), "exclude" ("e") or "only" ("o")
 * --skip_loaded_titles (-skip): Add the "-skip" flag to avoid pulling titles already pulled previously.  Relies on the target DB connection capabilities discussed above
@@ -319,48 +320,48 @@ The application uses a number of function arguments with optional flags.  The fl
 
 ### Function Arguments
 
-* api_listener (api): Launch the app into API service mode
+* **api_listener (api):** Launch the app into API service mode
     * --api_host
     * --port
     * --verbose_flag
-* rebuild_settings (rs): Rebuild app settings.  Useful if the app is running in API service mode, and a setting has been updated and needs to be reflected for future API requests
-* display_missing_counts (dmc): Display the current number of missing cast, keywords and persons
-* get_movies_updated_yesterday (gmuy): Retrieves movies changed yesterday
+* **rebuild_settings (rs):** Rebuild app settings.  Useful if the app is running in API service mode, and a setting has been updated and needs to be reflected for future API requests
+* **display_missing_counts (dmc):** Display the current number of missing cast, keywords and persons
+* **get_movies_updated_yesterday (gmuy):** Retrieves movies changed yesterday
     * --original_language
     * --min_runtime
     * --adult_content_flag
-* get_movies_by_favorite_actor (gmbfa): Retrieve titles with specified persons as cast members
+* **get_movies_by_favorite_actor (gmbfa):** Retrieve titles with specified persons as cast members
     * --person_id_list - If omitted, will utilize the results of the query "favorite_persons_sql.sql"
     * --adult_content_flag
     * --skip_loaded_titles
     * --row_limit
-* get_movies_by_search_terms (gmbst): Retrieve titles matching provided search terms
+* **get_movies_by_search_terms (gmbst):** Retrieve titles matching provided search terms
     * --search_terms - If omitted, will utilize the results of the query "search_terms_sql.sql"
     * --original_language
     * --adult_content_flag
     * --skip_loaded_titles
     * --row_limit
-* get_trending_movies (gtm): Retrieve trending titles over the last day or week.  Returns a maximum of 20,000 titles
+* **get_trending_movies (gtm):** Retrieve trending titles over the last day or week.  Returns a maximum of 20,000 titles
     * --time_window
     * --original_language
     * --skip_loaded_titles
     * --row_limit
-* get_missing_title_keywords (gmtk): Retrieve keywords linkages for titles without any
+* **get_missing_title_keywords (gmtk):** Retrieve keywords linkages for titles without any
     * --tmdb_ids
     * --adult_content_flag
     * --row_limit
-* get_missing_persons (gmp): Retrieve missing persons referenced in the title cast data
+* **get_missing_persons (gmp):** Retrieve missing persons referenced in the title cast data
     * --person_ids
     * --adult_content_flag
     * --row_limit
-* get_missing_title_cast (gmtc): Retrieve cast linkages for titles without any
+* **get_missing_title_cast (gmtc):** Retrieve cast linkages for titles without any
     * --tmdb_ids
     * --adult_content_flag
     * --row_limit
-* get_all_movies (gam): Downloads the daily full movie list with a subset of fields
-* get_all_persons (gap): Downloads the daily full person list with a subset of fields
-* reconcile_movies_against_full_list (rmafl): Checks the currently loaded list of titles against today's full list to identify removed titles.  Note that the daily lists do not contain adult content, so if your data does, ensure "loaded_titles_sql" is configured properly to not trigger false positives as removed titles
-* reconcile_persons_against_full_list (rpafl): Checks the currently loaded list of persons against today's full list to identify removed persons.  Note that the daily lists do not contain adult content, so if your data does, ensure "loaded_persons_sql" is configured properly to not trigger false positives as removed persons
+* **get_all_movies (gam):** Downloads the daily full movie list with a subset of fields
+* **get_all_persons (gap):** Downloads the daily full person list with a subset of fields
+* **reconcile_movies_against_full_list (rmafl):** Checks the currently loaded list of titles against today's full list to identify removed titles.  Note that the daily lists do not contain adult content, so if your data does, ensure "loaded_titles_sql" is configured properly to not trigger false positives as removed titles
+* **reconcile_persons_against_full_list (rpafl):** Checks the currently loaded list of persons against today's full list to identify removed persons.  Note that the daily lists do not contain adult content, so if your data does, ensure "loaded_persons_sql" is configured properly to not trigger false positives as removed persons
 
 ### Example Usage
 ```python
@@ -381,25 +382,115 @@ python3 ../src/main.py get_missing_persons -adult "o"
 python3 ../src/main.py get_missing_title_cast -adult "e" --row_limit 500
 ```
 
+## API Listener Mode
+
+When deployed into a container using the attached Dockerfiles, the application will launch into API listener mode on localhost, port 5002 by default.  This can be adjusted using one of the methods below:
+
+Via command line:
+```python
+python main.py --api_listener -host "0.0.0.0" -p "5002"
+```
+
+Via environment variables:
+* NEXUS_TMDB_API_HOST
+* NEXUS_TMDB_API_PORT
+
+Once started, in can be accessed via the POST endpoint at '**http://{TARGET_HOST}:{PORT}/request**'.  You should pass a dictionary of arguments.  Below is a list of accepted functions and arguments, which correspond to the detailed information above.  The only one specific to the API is "rebuild_settings (rs)", which will force the application to reread its configuration files without having to be stopped.
+
+***Functions***
+* display_missing_counts (dmc)
+* get_movies_updated_yesterday (gmuy)
+* get_movies_by_favorite_actor (gmbfa)
+* get_movies_by_search_terms (gmbst)
+* get_trending_movies (gtm)
+* get_missing_title_keywords (gmtk)
+* get_missing_persons (gmp)
+* get_missing_title_cast (gmtc)
+* get_title_images_by_persons (gtibp)
+* get_all_movies (gam)
+* get_all_persons (gap)
+* reconcile_movies_against_full_list (rmafl)
+* reconcile_persons_against_full_list (rpafl)
+* rebuild_settings (rs)
+
+***Arguments***
+* original_language
+* min_runtime
+* adult_content_flag
+* skip_loaded_titles (Pass as "True/False")
+* download_backdrops (Pass as "True/False")
+* download_posters (Pass as "True/False")
+* download_logos (Pass as "True/False")
+* search_terms (Pass as ["List"])
+* tmdb_ids (Pass as [List])
+* person_ids (Pass as [List])
+* row_limit
+* time_window
+
+Examples:
+
+```python
+params = {
+    'function': 'display_missing_counts'
+}
+
+response = requests.post('http://localhost:5002/request', params=params)
+```
+
+```python
+params = {
+    'function': 'get_movies_updated_yesterday',
+    'adult_content_flag': 'Exclude',
+    'original_language': 'en'
+}
+
+response = requests.post('http://localhost:5002/request', params=params)
+```
+
+```python
+params = {
+    'function': 'get_movies_by_search_terms',
+    'search_terms': ['Christmas', 'New Years'],
+    'skip_loaded_titles': 'True',
+    'row_limit': '1000'
+}
+
+response = requests.post('http://localhost:5002/request', params=params)
+```
+
+```python
+params = {
+    'function': 'get_movies_by_favorite_actor',
+    'person_ids': [1158, 738],
+    'skip_loaded_titles': 'False',
+    'row_limit': '200'
+}
+
+response = requests.post('http://localhost:5002/request', params=params)
+```
+
 ## Docker Deployment with S3
 
-A Docker image has been created based on the "tiangolo/uwsgi-nginx" Linux image, with all necessary files and libraries deployed.  It can be found at "jameslarsen42/nexus_tmdb_data_retriever".  Alternatively, a Dockerfile has been included in this package if you wish to build it yourself.
+A base Docker image has been created based on the "tiangolo/uwsgi-nginx" Linux image, with all necessary files and libraries deployed.  It can be found at "jameslarsen42/nexus-tmdb-data-retriever-base".  Alternatively, a Dockerfile has been included in this package if you wish to build it yourself.
+
+Once you have the base image, you should customize the the contents of the **./docker/s3/** folder and build into a new image.
 
 ### S3 Folder Structure
 
-The Docker Container uses s3sf fuse to mount an S3 bucket to specific locations used by the application.  An S3 bucket should be created with a certain sub-folder structure.  A template can be found at **./templates/S3 Folder Structure/**.  Note that the "app_config.ini" in this folder has already been optimized to point to the correct locations for Uploads, but other settings should be customized before uploading to S3.  Similarly make sure to customize "connections_config.ini" for your TMDB API key and target database.  The file "docker.env" is not used within the application, but can be useful when launching the Docker Container, if you prefer to use environment variables rather than storing sensitive information in the .ini files.
+The Docker Container uses s3sf fuse to mount an S3 bucket to specific locations used by the application.  An S3 bucket should be created with a certain sub-folder structure.  A template can be found at **./templates/S3 Folder Structure/**.  Note that the "app_config.ini" in this folder has already been optimized to point to the correct locations for Uploads, but other settings should be customized before uploading to S3.  Similarly make sure to customize "connections_config.ini" for your TMDB API key and target database.
 
 The below environment variables are required to be defined when launching the container in order for the S3 mounts to work:
-*  ***AWS_ACCESS_KEY_ID***
-*  ***AWS_SECRET_ACCESS_KEY***
-*  ***S3_SERVER_PATH***
+*  ***NEXUS_TMDB_AWS_ACCESS_KEY_ID***
+*  ***NEXUS_TMDB_AWS_SECRET_ACCESS_KEY***
+*  ***NEXUS_TMDB_S3_SERVER_PATH***
+*  ***NEXUS_TMDB_S3_BUCKET_NAME***
 
 ### Deploying the Container
 
-You can specify variables directly if you like, but the simplest method is below, after customizing your "docker.env" file.  Note that the "--cap-add SYS_ADMIN --device /dev/fuse" is necessary for the S3 mounts to work properly.
+You can specify variables directly if you like, but the simplest method is below, after customizing your "docker.env" file.  Note that the "--cap-add SYS_ADMIN --device /dev/fuse" is necessary for the S3 mounts to work properly.  You can also pass the "--bash" flag to launch the container to a bash terminal.  Otherwise it will enter into API listener mode with the default settings.
 
 ``` bash
-docker run --env-file file/path/to/docker.env --cap-add SYS_ADMIN --device /dev/fuse -it nexus_tmdb_data_retriever
+docker run --env-file file/path/to/docker.env --cap-add SYS_ADMIN --device /dev/fuse -it nexus-tmdb-data-retriever-s3:latest
 ```
 
 ## About the Author

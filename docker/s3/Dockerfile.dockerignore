@@ -1,40 +1,45 @@
 __pycache__
-/references/**
-sql_statements*.ini
+.git
+.vscode
+references
+**/image_page_builder.py
+**/sql_statements*.ini
+config/sql_queries_local
 **/sql_queries_local/**
-[Ignore]/
+# **/sql_queries_local
+[Ignore]
 *bkup*.*
-* - Copy*.*
-*_local*.*
+**/*- Copy*.*
+# **/*_local*.*
 */Logs/**
-main*.py
-!main.py
+**/main*.py
+!**/main.py
 set_keyring_passwords.py
-docker/*/*.env
-vscode/**
-**/api_endpoints/**
+**/docker/*/*.env
 launch.json
-~$*.xls*
-test_api.py
-connection_utils.py
+**/~$*.xls*
 
 # Temporary exclusions
-image_page_builder.py
-# docker/**
+# **/docker
 tests/*
 # Dockerfile
 # entrypoint.sh
 
 # Byte-compiled / optimized / DLL files
-__pycache__/
+**/__pycache__
 *.py[cod]
 *$py.class
 
 # Distribution / packaging
 .Python
-build/
+tmdb_data_retriever.egg-info
+**/tmdb_data_retriever.egg-info/
+**/*.egg-info
+*.egg-info
+*.egg-info/
+**/build
 develop-eggs/
-dist/
+**/dist
 downloads/
 eggs/
 .eggs/
@@ -45,7 +50,6 @@ sdist/
 var/
 wheels/
 share/python-wheels/
-*.egg-info/
 .installed.cfg
 *.egg
 MANIFEST

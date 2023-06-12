@@ -807,8 +807,8 @@ class MovieData:
 
 #     # movie_data.retrieve_movies_by_change_date()
 
-#     # persons = [1535848, 1426252, 135660, 143070, 136331, 76575, 932319]
-#     # persons = [1056772, 2953862, 997483, 591313]
+#     # persons = []
+#     # persons = []
 #     persons = person_data.determine_missing_persons()
 #     movies_list = movie_data.get_movie_ids_by_cast(persons, loaded_titles)
 #     df_movies = movie_data.get_title_data(movies_list)

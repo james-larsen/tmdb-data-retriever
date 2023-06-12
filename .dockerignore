@@ -32,7 +32,9 @@ tests/*
 
 # Distribution / packaging
 .Python
-tmdb_data_retriever.egg-info
+tmdb_data_retriever.egg-info/
+**/tmdb_data_retriever.egg-info/
+**/*.egg-info/
 **/*.egg-info
 *.egg-info
 *.egg-info/

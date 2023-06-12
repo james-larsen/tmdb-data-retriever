@@ -5,9 +5,10 @@ import os
 import argparse
 import dateparser
 # import datetime
-from flask import Flask, request, make_response, jsonify
+from flask import Flask, request#, make_response, jsonify
 # import json
 from threading import Lock
+import ast
 # import inspect
 # from nexus_utils.database_utils import build_engine
 # from nexus_utils import password_utils as pw
@@ -57,8 +58,12 @@ def run_flask_app(host=None, port=None, verbose_flag=False):
     if not host:
         host = 'localhost'
 
+    host = os.getenv('NEXUS_TMDB_API_HOST', host)
+
     if not port:
         port = 5002
+
+    host = os.getenv('NEXUS_TMDB_API_PORT', host)
 
     print(f'Listening on {host}:{port}')
     print('Press Ctrl+C to exit')
@@ -168,6 +173,10 @@ def trigger_function_from_api():
                 valid_function_values = set(function_aliases.values())
                 valid_functions_string = ''.join([f'\n--{value}' for value in valid_function_values])
                 print(f'Invalid function specified.  Valid values are:{valid_functions_string}')
+                if not my_api_response.api_error_flag:
+                    my_api_response.api_error_flag = True
+                if not my_api_response.api_message:
+                    my_api_response.api_message = f'Unknown function: "{function}"'
                 return {'error': f'Unknown function: "{function}"'}, 400
             elif function and function_lookup:
                 function = function_lookup
@@ -175,16 +184,32 @@ def trigger_function_from_api():
             original_language = params.get('original_language', None)
             min_runtime = params.get('min_runtime', None)
             adult_content_flag = params.get('adult_content_flag', None)
-            skip_loaded_titles = params.get('skip_loaded_titles', False)
-            backdrop_flag = params.get('download_backdrops', False)
-            poster_flag = params.get('download_posters', False)
-            logo_flag = params.get('download_logos', False)
+            skip_loaded_titles = string_utils.string_to_bool(params.get('skip_loaded_titles', False))
+            backdrop_flag = string_utils.string_to_bool(params.get('download_backdrops', False))
+            poster_flag = string_utils.string_to_bool(params.get('download_posters', False))
+            logo_flag = string_utils.string_to_bool(params.get('download_logos', False))
             search_terms_string = params.get('search_terms', '')
             search_terms = [search_term for search_term in search_terms_string.split(',') if search_term.strip()]
             tmdb_id_list_string = params.get('tmdb_ids', '')
-            tmdb_id_list = [int(tmdb_id) for tmdb_id in tmdb_id_list_string.split(',') if tmdb_id.strip()]
+            # tmdb_id_list = [int(tmdb_id) for tmdb_id in tmdb_id_list_string.split(',') if tmdb_id.strip()]
+            if tmdb_id_list_string is not None and len(tmdb_id_list_string) > 0:
+                # tmdb_id_list = [int(id) for id in ast.literal_eval(tmdb_id_list_string)]
+                try:
+                    tmdb_id_list = [int(id) for id in ast.literal_eval(tmdb_id_list_string)]
+                except (ValueError, SyntaxError, TypeError):
+                    tmdb_id_list = [int(tmdb_id_list_string)]
+            else:
+                tmdb_id_list = []
             person_id_list_string = params.get('person_ids', '')
-            person_id_list = [int(person_id) for person_id in person_id_list_string.split(',') if person_id.strip()]
+            # person_id_list = [int(person_id) for person_id in person_id_list_string.split(',') if person_id.strip()]
+            if person_id_list_string is not None and len(person_id_list_string) > 0:
+                # person_id_list = [int(id) for id in ast.literal_eval(person_id_list_string)]
+                try:
+                    person_id_list = [int(id) for id in ast.literal_eval(person_id_list_string)]
+                except (ValueError, SyntaxError, TypeError):
+                    person_id_list = [int(person_id_list_string)]
+            else:
+                person_id_list = []
             # print(person_id_list)
             row_limit = params.get('row_limit', None)
             time_window = params.get('time_window', None)
@@ -211,7 +236,7 @@ def trigger_function_from_api():
         
         except Exception as e:
             print(f'Error: {str(e)}')
-            if my_api_response.api_error_flag == None:
+            if not my_api_response.api_error_flag:
                 my_api_response.api_error_flag = True
             if not my_api_response.api_message:
                 my_api_response.api_message = str(e)
@@ -866,6 +891,8 @@ def per_run_initializations(my_settings):
     import local_db_handler, movie_handler, person_handler, image_handler, api_response
     global local_db, movie_data, person_data, image_data, my_api_response
 
+    my_settings.reset_start_time()
+
     my_api_response = api_response.ApiResponse()
     local_db = local_db_handler.LocalDB(
         my_settings
@@ -978,7 +1005,7 @@ if __name__ == '__main__':
 
         # parse_command_run_arguments()
 
-        per_run_initializations(my_settings)
+        # per_run_initializations(my_settings)
         
         print_job_start()
 
@@ -1003,13 +1030,13 @@ if __name__ == '__main__':
         # display_missing_counts()
 
         # get_movies_by_search_terms(original_language='en', skip_loaded_titles=True)#, row_limit=12)
-        # get_trending_movies(time_window='week', original_language='en', skip_loaded_titles=True, row_limit=2_000)
+        # get_trending_movies(time_window='week', original_language='en', skip_loaded_titles=True, row_limit=100)
 
-        # get_movies_by_favorite_actor([4065300], adult_content_flag='include', ids_to_skip=loaded_titles)
+        # get_movies_by_favorite_actor([], adult_content_flag='include', ids_to_skip=loaded_titles)
         # get_movies_by_favorite_actor(ids_to_skip=loaded_titles)
 
         # get_movies_updated_yesterday(original_language='en', adult_content_flag='include')
-        # get_movies_updated_yesterday(original_language='en')#, adult_content_flag='only')
+        # get_movies_updated_yesterday(original_language='en')#, adult_content_flag='exclude')
 
         # movie_data.get_movie_discover_data(adult_content_flag='only')
 
@@ -1018,22 +1045,22 @@ if __name__ == '__main__':
 
         # get_title_images_by_persons([1912793], skip_loaded_titles=False)
 
-        # get_missing_persons(current_time_string, [1535848, 1426252, 135660, 143070, 136331, 76575, 932319, 1056772, 2953862, 997483, 591313])
+        # get_missing_persons(current_time_string, [])
         # get_missing_title_cast()
         # get_missing_persons()
         # get_missing_title_keywords()
 
-        # tmdb_list = person_data.get_titles_by_person([1535848, 1426252, 135660, 143070, 136331, 76575, 932319, 1056772, 2953862, 997483, 591313], local_db.loaded_title_cast)
+        # tmdb_list = person_data.get_titles_by_person([], local_db.loaded_title_cast)
 
         # person_data.get_title_cast_data_by_movie(tmdb_list)
 
-        # person_data.get_title_cast_data_by_movie([1064688, 364385])
+        # person_data.get_title_cast_data_by_movie([])
 
         # get_missing_title_cast(row_limit=100)
         # get_missing_persons(row_limit=1_000)
         # print(len(local_db.loaded_persons))
-        # get_missing_persons([4065300])
-        get_missing_persons([-1])
+        # get_missing_persons([])
+        # get_missing_persons([-1])
         # print(len(local_db.loaded_persons))
 
         # get_missing_title_keywords(row_limit=200)
