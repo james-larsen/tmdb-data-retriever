@@ -24,7 +24,9 @@ def cleanse_value(value):
         value = value.replace('\r', ' | ')
         value = value.replace('\n', ' | ')
         value = value.replace('\t', ' ')
+        value = value.replace('"', "'")
         value = value.replace('  ', ' ')
+        value = value.strip()
     elif isinstance(value, dict):
         value = {key: cleanse_value(val) if isinstance(val, str) else val for key, val in value.items()}
     return value

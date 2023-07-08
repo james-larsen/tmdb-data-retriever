@@ -94,7 +94,7 @@ class ImageData:
 
         output_path = self.output_path
 
-        if self.output_title_images_flag:
+        if self.output_title_images_flag and df_images:
             filename = misc.write_data_to_file(df_images, output_path + os.sep + 'tmdb_title_image', 'tmdb_title_image', suffix)
             # Update loaded title images list with tmdb_ids being extracted
             self.local_db.loaded_title_images = df_images['tmdb_id'].tolist()
@@ -110,9 +110,12 @@ class ImageData:
         tmdb_ids = df_images['tmdb_id'].unique()
         fully_processed = []
 
-        images_processed = 0
-
         print('Retrieving title images')
+
+        images_processed = 0
+        retry_count = 0
+        retry_limit = 3
+        processed_at_last_error = 0
 
         try:
             for tmdb_id in tmdb_ids:
@@ -139,20 +142,38 @@ class ImageData:
                             local_file_name = str(tmdb_id) + '_' + image_type + '_' + str(image_num).zfill(2) + '_' + file_path[1:]
                             local_file_path = os.path.join(local_images_path_subfolder, local_file_name)
 
-                            url = f'https://www.themoviedb.org/t/p/original{file_path}'
-                            response = requests.get(url)
-                            if response.status_code == 200:
-                                with open(local_file_path, 'wb') as file:
-                                    file.write(response.content)
-                                df_images.at[index, 'local_file_path'] = str(local_file_path)
-                                image_num += 1
-                                images_processed += 1
-                            else:
-                                print(f'URL: {url}\nResponse: {response.status_code}')
+                            while True:
+                                url = f'https://www.themoviedb.org/t/p/original{file_path}'
+                                
+                                try:
+                                    response = requests.get(url)
+                                    if response.status_code == 200:
+                                        with open(local_file_path, 'wb') as file:
+                                            file.write(response.content)
+                                        df_images.at[index, 'local_file_path'] = str(local_file_path)
+                                        image_num += 1
+                                        images_processed += 1
+                                    else:
+                                        print(f'URL: {url}\nResponse: {response.status_code}')
 
-                            if images_processed % 10 == 0:
-                                print(f'Images processed: {images_processed} of {len(df_images)}')
-                                time.sleep(2)
+                                    if images_processed % 10 == 0:
+                                        # print('THIS IS A TEST ERROR')
+                                        # raise Exception('Test Error')
+                                        print(f'Images processed: {images_processed} of {len(df_images)}')
+                                        time.sleep(2)
+                                    break
+                                except Exception as e:
+                                    # If at least 20 records were processed since last error, reset the retry count
+                                    if images_processed - processed_at_last_error >= 20:
+                                        processed_at_last_error = images_processed
+                                        retry_count = -1
+                                    
+                                    retry_count += 1
+                                    if retry_count < retry_limit:
+                                        print('Error encountered, retrying in 5 minutes...')
+                                        time.sleep(300)
+                                    else:
+                                        raise Exception('Retries exceeded')
                 fully_processed.append(tmdb_id)
         except Exception as e:
             print(f"An error occurred: {str(e)}")

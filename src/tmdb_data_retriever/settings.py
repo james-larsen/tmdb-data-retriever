@@ -155,7 +155,8 @@ class Settings:
             self.title_images_by_favorite_persons_sql, 
             self.titles_missing_cast_sql, 
             self.titles_missing_keywords_sql, 
-            self.persons_missing_sql
+            self.persons_missing_sql, 
+            self.companies_missing_sql
             ) = self.read_sql_queries(sql_queries_config_path)
         # loaded_titles_sql, loaded_title_cast_sql, loaded_persons_sql, loaded_title_images_sql, favorite_persons_sql, search_terms_sql, titles_missing_cast_sql, titles_missing_keywords_sql, persons_missing_sql = self.read_sql_queries(sql_queries_config_path)
 
@@ -373,6 +374,7 @@ class Settings:
         titles_missing_cast_sql = sql_queries.get("titles_missing_cast_sql")
         titles_missing_keywords_sql = sql_queries.get("titles_missing_keywords_sql")
         persons_missing_sql = sql_queries.get("persons_missing_sql")
+        companies_missing_sql = sql_queries.get("companies_missing_sql")
 
         return(
             loaded_titles_sql, 
@@ -384,7 +386,8 @@ class Settings:
             title_images_by_favorite_persons_sql, 
             titles_missing_cast_sql, 
             titles_missing_keywords_sql, 
-            persons_missing_sql
+            persons_missing_sql, 
+            companies_missing_sql
         )
 
     # def read_sql_queries(self, _sql_queries_config_path):

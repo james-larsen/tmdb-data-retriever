@@ -19,7 +19,8 @@ class LocalDB:
             # title_images_by_favorite_persons_sql=None,
             # titles_missing_cast_sql=None, 
             # titles_missing_keywords_sql=None, 
-            # persons_missing_sql=None
+            # persons_missing_sql=None, 
+            # companies_missing_sql=None
         ):
 
         self.my_settings = my_settings
@@ -73,6 +74,9 @@ class LocalDB:
 
         if self.my_settings.persons_missing_sql:
             self.persons_missing_sql = self.my_settings.persons_missing_sql
+
+        if self.my_settings.companies_missing_sql:
+            self.companies_missing_sql = self.my_settings.companies_missing_sql
         
         self._loaded_titles_checked_flag = False
         self._loaded_titles = []
@@ -98,6 +102,8 @@ class LocalDB:
         self._titles_missing_keywords = []
         self._persons_missing_checked_flag = False
         self._persons_missing = []
+        self._companies_missing_checked_flag = False
+        self._companies_missing = []
 
         if not self.functioning_engine:
             print(self._engine_status)
@@ -113,6 +119,7 @@ class LocalDB:
             self._titles_missing_cast_checked_flag = True
             self._titles_missing_keywords_checked_flag = True
             self._persons_missing_checked_flag = True
+            self._companies_missing_checked_flag = True
 
     @property
     def engine_status(self):
@@ -520,3 +527,32 @@ class LocalDB:
                 self._persons_missing = []
 
         return self._persons_missing
+
+    @property
+    def companies_missing(self):#, select_query=None):
+        """Retrieve missing companies"""
+
+        if not self._companies_missing_checked_flag:
+            if self.companies_missing_sql:
+                select_query = self.companies_missing_sql
+                
+                try:
+                    with self.engine.connect().execution_options(isolation_level='AUTOCOMMIT') as conn:
+                        # print('companies_missing: querying database')
+                        results = conn.execute(text(select_query))
+                        df = pd.DataFrame(results)
+
+                    self._companies_missing_checked_flag = True
+
+                    if not df.empty:
+                        df.columns = ['company_id']
+                        self._companies_missing = df['company_id'].tolist()
+                    else:
+                        self._companies_missing = []
+                except Exception as e:
+                    self._companies_missing_checked_flag = True
+                    self._companies_missing = []
+            else:
+                self._companies_missing = []
+
+        return self._companies_missing

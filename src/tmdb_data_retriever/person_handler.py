@@ -140,30 +140,57 @@ class PersonData:
                         'credit_id': '0',
                         'order': 0
                         })
+        
+        retry_count = 0
+        retry_limit = 3
+        processed_at_last_error = 0
 
-        for i, tmdb_id in enumerate(tmdb_id_list):
-            url = f'https://api.themoviedb.org/3/movie/{tmdb_id}/credits'
+        try:
+            for i, tmdb_id in enumerate(tmdb_id_list):
+                while True:
+                    url = f'https://api.themoviedb.org/3/movie/{tmdb_id}/credits'
 
-            response = requests.get(url, params=params)
-            results = response.json()
-            if 'success' not in results:
-                if not results['cast']:
-                    dummy_title_cast['tmdb_id'] = tmdb_id
-                    dummy_title_cast['credit_id'] = str(int(tmdb_id) * -1)
-                    results['cast'].append(dummy_title_cast.copy())
-                else:
-                    for cast_item in results['cast']:
-                        cast_item['tmdb_id'] = results['id']
-                all_results.extend(results['cast'])
+                    try:
+                        response = requests.get(url, params=params)
+                        results = response.json()
+                        if 'success' not in results:
+                            if not results['cast']:
+                                dummy_title_cast['tmdb_id'] = tmdb_id
+                                dummy_title_cast['credit_id'] = str(int(tmdb_id) * -1)
+                                results['cast'].append(dummy_title_cast.copy())
+                            else:
+                                for cast_item in results['cast']:
+                                    cast_item['tmdb_id'] = results['id']
+                            all_results.extend(results['cast'])
+                        else:
+                            dummy_title_cast['tmdb_id'] = tmdb_id
+                            dummy_title_cast['credit_id'] = str(int(tmdb_id) * -1)
+                            all_results.append(dummy_title_cast.copy())
+                            self.local_db.error_tmdb_id_list.append(tmdb_id)
+                        
+                        if (i + 1) % 40 == 0:
+                            print(f'Titles processed: {i + 1} of {list_len}')
+                            time.sleep(2)
+                        break
+                    except Exception as e:
+                        # If at least 50 records were processed since last error, reset the retry count
+                        if i - processed_at_last_error >= 50:
+                            processed_at_last_error = i
+                            retry_count = -1
+                        
+                        retry_count += 1
+                        if retry_count < retry_limit:
+                            print('Error encountered, retrying in 5 minutes...')
+                            time.sleep(300)
+                        else:
+                            raise Exception('Retries exceeded')
+        except Exception as e:
+            if all_results:
+                message = f'"get_title_cast_data_by_movie" did not fully complete: {i} of {list_len} processed'
             else:
-                dummy_title_cast['tmdb_id'] = tmdb_id
-                dummy_title_cast['credit_id'] = str(int(tmdb_id) * -1)
-                all_results.append(dummy_title_cast.copy())
-                self.local_db.error_tmdb_id_list.append(tmdb_id)
-            
-            if (i + 1) % 40 == 0:
-                print(f'Titles processed: {i + 1} of {list_len}')
-                time.sleep(2)
+                message = f'Error encountered: {str(e)}'
+            print(message)
+            self.api_response.append_message(message)
         
         if all_results:
             df_title_cast = pd.DataFrame(all_results)
@@ -243,20 +270,47 @@ class PersonData:
 
         if len(person_id_list) > 1:
             print('Retrieving person data')
-
-        for i, person_id in enumerate(person_id_list):
-            url = f'https://api.themoviedb.org/3/person/{person_id}'
-
-            response = requests.get(url, params=params)
-            results = response.json()
-            if 'success' not in results:
-                all_results.append(results)
-            else:
-                self.local_db.error_person_id_list.append(person_id)
             
-            if (i + 1) % 40 == 0:
-                print(f'Persons processed: {i + 1} of {list_len}')
-                time.sleep(2)
+        retry_count = 0
+        retry_limit = 3
+        processed_at_last_error = 0
+
+        try:
+            for i, person_id in enumerate(person_id_list):
+                while True:
+                    url = f'https://api.themoviedb.org/3/person/{person_id}'
+
+                    try:
+                        response = requests.get(url, params=params)
+                        results = response.json()
+                        if 'success' not in results:
+                            all_results.append(results)
+                        else:
+                            self.local_db.error_person_id_list.append(person_id)
+                        
+                        if (i + 1) % 40 == 0:
+                            print(f'Persons processed: {i + 1} of {list_len}')
+                            time.sleep(2)
+                        break
+                    except Exception as e:
+                        # If at least 50 records were processed since last error, reset the retry count
+                        if i - processed_at_last_error >= 50:
+                            processed_at_last_error = i
+                            retry_count = -1
+                        
+                        retry_count += 1
+                        if retry_count < retry_limit:
+                            print('Error encountered, retrying in 5 minutes...')
+                            time.sleep(300)
+                        else:
+                            raise Exception('Retries exceeded')
+        except Exception as e:
+            if all_results:
+                message = f'"get_person_data" did not fully complete: {i} of {list_len} processed'
+            else:
+                message = f'Error encountered: {str(e)}'
+            print(message)
+            self.api_response.append_message(message)
         
         if all_results:
             df = pd.DataFrame(all_results)
@@ -329,21 +383,6 @@ class PersonData:
             api_result['result'] = api_sub_results
             self.api_response.api_result.append(api_result)
         
-    # def get_title_cast(self, suffix, tmdb_id_list=[], row_limit=None):
-
-    #     if not tmdb_id_list:
-    #         tmdb_id_list = self.local_db.titles_missing_cast
-
-    #     if row_limit and tmdb_id_list and len(tmdb_id_list) >= row_limit:
-    #         tmdb_id_list = tmdb_id_list[:row_limit]
-        
-    #     df_title_cast = self.get_title_cast_data_by_movie(tmdb_id_list)
-
-    #     if len(df_title_cast) > 0:
-    #         self.process_title_cast(df_title_cast, suffix)
-    #     else:
-    #         print('No title cast available')
-
     def process_title_cast(self, df_title_cast, suffix):
 
         api_result = {'action':'process_title_cast'}

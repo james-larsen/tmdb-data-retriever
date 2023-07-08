@@ -63,7 +63,7 @@ def run_flask_app(host=None, port=None, verbose_flag=False):
     if not port:
         port = 5002
 
-    host = os.getenv('NEXUS_TMDB_API_PORT', host)
+    port = os.getenv('NEXUS_TMDB_API_PORT', port)
 
     print(f'Listening on {host}:{port}')
     print('Press Ctrl+C to exit')
@@ -125,6 +125,8 @@ common_function_aliases = {
     'gmtk': 'get_missing_title_keywords',
     'get_missing_persons': 'get_missing_persons',
     'gmp': 'get_missing_persons',
+    'get_missing_companies': 'get_missing_companies',
+    'gmc': 'get_missing_companies',
     'get_missing_title_cast': 'get_missing_title_cast',
     'gmtc': 'get_missing_title_cast',
     'get_title_images_by_persons': 'get_title_images_by_persons',
@@ -362,6 +364,7 @@ def call_function(
             search_terms=None,
             tmdb_id_list=None,
             person_id_list=None,
+            company_id_list=None,
             row_limit=None,
             time_window=None
         ):
@@ -518,6 +521,11 @@ def call_function(
         print_job_start()
         get_title_images_by_persons(person_id_list=person_id_list, skip_loaded_titles=skip_loaded_titles, adult_content_flag=adult_content_flag, row_limit=row_limit, backdrop_flag=backdrop_flag, poster_flag=poster_flag, logo_flag=logo_flag)
         print_job_end()
+    elif function == 'get_missing_companies':
+        print_job_start()
+        display_missing_counts()
+        get_missing_companies(company_id_list=company_id_list, row_limit=row_limit)
+        print_job_end()
     elif function == 'get_all_movies':
         print_job_start()
         get_all_movies()
@@ -541,6 +549,7 @@ def display_missing_counts():
     print(f'Missing Cast: {len(local_db.titles_missing_cast):,}')
     print(f'Missing Keywords: {len(local_db.titles_missing_keywords):,}')
     print(f'Missing Persons: {len(local_db.persons_missing):,}')
+    print(f'Missing Companies: {len(local_db.companies_missing):,}')
 
 def get_all_movies():
     
@@ -611,7 +620,7 @@ def handle_missing_data(suffix=None, tmdb_id_list=[], person_id_list=[]):
         if len(df_removed_persons) > 0:
             person_data.process_removed_persons(df_removed_persons, suffix)
 
-def get_movies_updated_yesterday(original_language=None, min_runtime=None, adult_content_flag=None):
+def get_movies_updated_yesterday(original_language=None, min_runtime=None, adult_content_flag=None, row_limit=None):
     """Retrieve all movies marked as changed yesterday"""
     # TESTED
     yesterday = dateparser.parse('yesterday').date()
@@ -623,7 +632,7 @@ def get_movies_updated_yesterday(original_language=None, min_runtime=None, adult
     
     changed_title_list = movie_data.get_movie_changes(formatted_date, adult_content_flag=adult_content_flag)
 
-    df_titles = movie_data.get_title_data(changed_title_list, original_language=original_language, min_runtime=min_runtime)#, row_limit=50)
+    df_titles = movie_data.get_title_data(changed_title_list, original_language=original_language, min_runtime=min_runtime, row_limit=row_limit)
 
     if len(df_titles) > 0:
         movie_data.process_title_data(df_titles, suffix)
@@ -833,6 +842,28 @@ def get_missing_persons(person_id_list=[], adult_content_flag=None, row_limit=No
 
     handle_missing_data(suffix)
 
+def get_missing_companies(company_id_list=[], adult_content_flag=None, row_limit=None):
+    
+    suffix = my_settings.current_time_string
+
+    if not adult_content_flag:
+        adult_content_flag = my_settings.global_adult_content_flag
+
+    if not company_id_list:
+        company_id_list = local_db.companies_missing
+
+    if company_id_list:
+        df_company = movie_data.get_company_data(company_id_list, row_limit=row_limit)
+
+        if len(df_company) > 0:
+            movie_data.process_companies(df_company, suffix)
+        else:
+            print('No missing companies')
+            my_api_response.api_message = 'No missing companies'
+    else:
+        print('No missing companies')
+        my_api_response.api_message = 'No missing companies'
+
 def get_missing_title_cast(tmdb_id_list=[], adult_content_flag=None, row_limit=None):
     
     suffix = my_settings.current_time_string
@@ -1000,6 +1031,12 @@ if __name__ == '__main__':
         parse_command_run_arguments()
     else:
         import local_db_handler, movie_handler, person_handler, image_handler
+
+        # get_missing_companies([3514, 18109])
+        # get_missing_companies(row_limit=2_000)
+        # get_missing_companies()
+
+        # get_movies_updated_yesterday(original_language='en', adult_content_flag='exclude', row_limit=200)
         
         # current_time, current_time_string, current_time_log = dtu.get_current_timestamp()
 
@@ -1021,7 +1058,8 @@ if __name__ == '__main__':
         # reconcile_persons_against_full_list()
 
         # get_title_images_by_persons(local_db.favorite_persons, suffix=None, skip_loaded_titles=True, adult_content_flag='only', row_limit=None, backdrop_flag=True, poster_flag=True, logo_flag=True)
-        # get_title_images_by_persons([], suffix=None, skip_loaded_titles=True, adult_content_flag='only', row_limit=None, backdrop_flag=True, poster_flag=True, logo_flag=True)
+        # get_title_images_by_persons([], suffix=None, skip_loaded_titles=True, adult_content_flag='include', row_limit=None, backdrop_flag=True, poster_flag=True, logo_flag=True)
+        # get_title_images_by_persons([135660], suffix=None, skip_loaded_titles=False, adult_content_flag='include', row_limit=50, backdrop_flag=True, poster_flag=True, logo_flag=True)
         # create_image_html_by_person(local_db.favorite_persons)
         # create_image_html_by_person(local_db.favorite_persons, backdrop_required_flag=True)
 

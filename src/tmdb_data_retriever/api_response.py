@@ -2,6 +2,9 @@ from flask import make_response, jsonify
 
 class ApiResponse:
     api_response = None
+    api_result = []
+    api_message = ''
+    task_error = False
     
     def __init__(self):
         self.api_result = []
@@ -16,6 +19,12 @@ class ApiResponse:
 
     # def reset(self):
     #     self.api_result = []
+
+    def append_message(self, message):
+        if self.api_message:
+            self.api_message += "; " + message
+        else:
+            self.api_message = message
 
     def build_api_response(self, app_context, function):#, my_settings):
         # global my_settings, my_api_response#, api_result, api_error_flag, api_message

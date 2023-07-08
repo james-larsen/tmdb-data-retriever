@@ -441,22 +441,49 @@ class MovieData:
         }
 
         print('Retrieving title data')
+        retry_count = 0
+        retry_limit = 3
+        processed_at_last_error = 0
 
-        for i, tmdb_id in enumerate(tmdb_id_list):
-            url = f'https://api.themoviedb.org/3/movie/{tmdb_id}'
+        try:
+            for i, tmdb_id in enumerate(tmdb_id_list):
+                while True:
+                    url = f'https://api.themoviedb.org/3/movie/{tmdb_id}'
 
-            response = requests.get(url, params=params)
-            results = response.json()
-            if 'success' not in results:
-                if not original_language or (original_language and results['original_language'] == original_language):
-                    if not min_runtime or (min_runtime and (int(results['runtime']) == 0 or int(results['runtime']) >= min_runtime)):
-                        all_results.append(results)
+                    try:
+                        response = requests.get(url, params=params)
+                        results = response.json()
+                        if 'success' not in results:
+                            if not original_language or (original_language and results['original_language'] == original_language):
+                                if not min_runtime or (min_runtime and (int(results['runtime']) == 0 or int(results['runtime']) >= min_runtime)):
+                                    all_results.append(results)
+                        else:
+                            self.local_db.error_tmdb_id_list.append(tmdb_id)
+                        
+                        if (i + 1) % 40 == 0:
+                            print(f'Titles processed: {i + 1} of {list_len}')
+                            time.sleep(2)
+                        break
+                    except Exception as e:
+                        # If at least 50 records were processed since last error, reset the retry count
+                        if i - processed_at_last_error >= 50:
+                            processed_at_last_error = i
+                            retry_count = -1
+                        
+                        retry_count += 1
+                        if retry_count < retry_limit:
+                            print('Error encountered, retrying in 5 minutes...')
+                            time.sleep(300)
+                        else:
+                            raise Exception('Retries exceeded')
+
+        except Exception as e:
+            if all_results:
+                message = f'"get_title_data" did not fully complete: {i} of {list_len} processed'
             else:
-                self.local_db.error_tmdb_id_list.append(tmdb_id)
-            
-            if (i + 1) % 40 == 0:
-                print(f'Titles processed: {i + 1} of {list_len}')
-                time.sleep(2)
+                message = f'Error encountered: {str(e)}'
+            print(message)
+            self.api_response.append_message(message)
         
         if all_results:
             df = pd.DataFrame(all_results)
@@ -482,6 +509,15 @@ class MovieData:
             df_genres = df_genres.drop(columns=df_genres.columns.difference(['tmdb_id', 'genre_id', 'genre_name']))
 
             df_title_genre = df_genres[df_genres['genre_id'].notnull()][['tmdb_id', 'genre_id']].drop_duplicates().reset_index(drop=True)
+
+            # Check if there are any titles without genres
+            titles_without_genres = df_titles[~df_titles['tmdb_id'].isin(df_title_genre['tmdb_id'])]
+
+            # Create a dummy record with all tmdb_id values and a genre_id of 0
+            dummy_record = pd.DataFrame({'tmdb_id': titles_without_genres['tmdb_id'], 'genre_id': 0})
+
+            # Append the dummy record to df_title_genre
+            df_title_genre = pd.concat([df_title_genre, dummy_record])
 
             # Create df_genre
             df_genre = df_genres[df_genres['genre_id'].notnull()][['genre_id', 'genre_name']].drop_duplicates().reset_index(drop=True)
@@ -532,6 +568,15 @@ class MovieData:
 
             df_title_production_country = df_production_countries[df_production_countries['production_country_iso_cd'].notnull()][['tmdb_id', 'production_country_iso_cd']].drop_duplicates().reset_index(drop=True)
 
+            # Check if there are any titles without production countries
+            titles_without_countries = df_titles[~df_titles['tmdb_id'].isin(df_title_production_country['tmdb_id'])]
+
+            # Create a dummy record with all tmdb_id values and a country iso code of '-1'
+            dummy_record = pd.DataFrame({'tmdb_id': titles_without_countries['tmdb_id'], 'production_country_iso_cd': '-1'})
+
+            # Append the dummy record to df_title_production_country
+            df_title_production_country = pd.concat([df_title_production_country, dummy_record])
+
             # Create df_production_country
             df_production_country = df_production_countries[df_production_countries['production_country_iso_cd'].notnull()][['production_country_iso_cd', 'production_country_name']].drop_duplicates().reset_index(drop=True)
 
@@ -557,6 +602,15 @@ class MovieData:
 
             df_title_production_company = df_production_companies[df_production_companies['production_company_id'].notnull()][['tmdb_id', 'production_company_id']].drop_duplicates().reset_index(drop=True)
 
+            # Check if there are any titles without production companies
+            titles_without_companies = df_titles[~df_titles['tmdb_id'].isin(df_title_production_company['tmdb_id'])]
+
+            # Create a dummy record with all tmdb_id values and a company ID of 0
+            dummy_record = pd.DataFrame({'tmdb_id': titles_without_companies['tmdb_id'], 'production_company_id': 0})
+
+            # Append the dummy record to df_title_production_company
+            df_title_production_company = pd.concat([df_title_production_company, dummy_record])
+
             # Create df_production_company
             df_production_company = df_production_companies[df_production_companies['production_company_id'].notnull()][['production_company_id', 'production_company_name', 'production_company_logo_path', 'production_company_origin_country']].drop_duplicates().reset_index(drop=True)
 
@@ -581,6 +635,15 @@ class MovieData:
             df_collections = df_collections.drop(columns=df_collections.columns.difference(['tmdb_id', 'collection_id', 'collection_name', 'collection_poster_path', 'collection_backdrop_path']))
 
             df_title_collection = df_collections[df_collections['collection_id'].notnull()][['tmdb_id', 'collection_id']].drop_duplicates().reset_index(drop=True)
+
+            # Check if there are any titles without collections
+            titles_without_collections = df_titles[~df_titles['tmdb_id'].isin(df_title_collection['tmdb_id'])]
+
+            # Create a dummy record with all tmdb_id values and a collection_id of 0
+            dummy_record = pd.DataFrame({'tmdb_id': titles_without_collections['tmdb_id'], 'collection_id': 0})
+
+            # Append the dummy record to df_title_collection
+            df_title_collection = pd.concat([df_title_collection, dummy_record])
 
             # Create df_collection
             df_collection = df_collections[df_collections['collection_id'].notnull()][['collection_id', 'collection_name', 'collection_poster_path', 'collection_backdrop_path']].drop_duplicates().reset_index(drop=True)
@@ -632,9 +695,10 @@ class MovieData:
         if self.output_title_production_companies_flag:
             filename = misc.write_data_to_file(df_title_production_company, output_path + os.sep + 'tmdb_title_production_company', 'tmdb_title_production_company', suffix)
             api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_production_company):,}"}
-        if self.output_production_companies_flag:
-            filename = misc.write_data_to_file(df_production_company, output_path + os.sep + 'tmdb_production_company', 'tmdb_production_company', suffix)
-            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_production_company):,}"}
+        # Replaced by separate extract
+        # if self.output_production_companies_flag:
+        #     filename = misc.write_data_to_file(df_production_company, output_path + os.sep + 'tmdb_production_company', 'tmdb_production_company', suffix)
+        #     api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_production_company):,}"}
         if self.output_title_collections_flag:
             filename = misc.write_data_to_file(df_title_collection, output_path + os.sep + 'tmdb_title_collection', 'tmdb_title_collection', suffix)
             api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_title_collection):,}"}
@@ -682,28 +746,55 @@ class MovieData:
 
         print('Retrieving title keywords')
 
+        retry_count = 0
+        retry_limit = 3
+        processed_at_last_error = 0
+
         dummy_keywords = ({
                         'id': 0,
                         'keywords': [{'id': 0, 'name': 'no keywords'}]
                         })
 
-        for i, tmdb_id in enumerate(tmdb_id_list):
-            url = f'https://api.themoviedb.org/3/movie/{tmdb_id}/keywords'
+        try:
+            for i, tmdb_id in enumerate(tmdb_id_list):
+                while True:
+                    url = f'https://api.themoviedb.org/3/movie/{tmdb_id}/keywords'
 
-            response = requests.get(url, params=params)
-            results = response.json()
-            if 'success' not in results:
-                if not results['keywords']:
-                    results['keywords'].append({'id': 0, 'name': 'no keywords'})
-                all_results.append(results)
+                    try:
+                        response = requests.get(url, params=params)
+                        results = response.json()
+                        if 'success' not in results:
+                            if not results['keywords']:
+                                results['keywords'].append({'id': 0, 'name': 'no keywords'})
+                            all_results.append(results)
+                        else:
+                            dummy_keywords['id'] = tmdb_id
+                            all_results.append(dummy_keywords.copy())
+                            self.local_db.error_tmdb_id_list.append(tmdb_id)
+                        
+                        if (i + 1) % 40 == 0:
+                            print(f'Titles processed: {i + 1} of {list_len}')
+                            time.sleep(2)
+                        break
+                    except Exception as e:
+                        # If at least 50 records were processed since last error, reset the retry count
+                        if i - processed_at_last_error >= 50:
+                            processed_at_last_error = i
+                            retry_count = -1
+                        
+                        retry_count += 1
+                        if retry_count < retry_limit:
+                            print('Error encountered, retrying in 5 minutes...')
+                            time.sleep(300)
+                        else:
+                            raise Exception('Retries exceeded')
+        except Exception as e:
+            if all_results:
+                message = f'"get_title_keyword_data" did not fully complete: {i} of {list_len} processed'
             else:
-                dummy_keywords['id'] = tmdb_id
-                all_results.append(dummy_keywords.copy())
-                self.local_db.error_tmdb_id_list.append(tmdb_id)
-            
-            if (i + 1) % 40 == 0:
-                print(f'Titles processed: {i + 1} of {list_len}')
-                time.sleep(2)
+                message = f'Error encountered: {str(e)}'
+            print(message)
+            self.api_response.append_message(message)
         
         if all_results:
             df_title_keywords = pd.DataFrame(all_results)
@@ -757,6 +848,102 @@ class MovieData:
         if self.output_keywords_flag:
             filename = misc.write_data_to_file(df_keyword, output_path + os.sep + 'tmdb_keyword', 'tmdb_keyword', suffix)
             api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_keyword):,}"}
+            api_sub_results.append(api_sub_result)
+
+        if api_sub_results:
+            api_result['result'] = api_sub_results
+            self.api_response.api_result.append(api_result)
+
+    def get_company_data(self, company_id_list=[], ids_to_skip=[], row_limit=None):
+        """Retrieve company data given a list of TMDB company IDs"""
+        # global api_key
+        all_results = []
+
+        # remove duplicates
+        company_id_list = list(set(company_id_list))
+
+        if ids_to_skip:
+            company_id_list = [item for item in company_id_list if item not in ids_to_skip]
+    
+        if row_limit and company_id_list and len(company_id_list) >= row_limit:
+            company_id_list = company_id_list[:row_limit]
+        
+        list_len = len(company_id_list)
+
+        params = {
+            'api_key': self.api_key
+        }
+
+        if len(company_id_list) > 1:
+            print('Retrieving company data')
+        
+        retry_count = 0
+        retry_limit = 3
+        processed_at_last_error = 0
+
+        try:
+            for i, company_id in enumerate(company_id_list):
+                while True:
+                    url = f'https://api.themoviedb.org/3/company/{company_id}'
+
+                    try:
+                        response = requests.get(url, params=params)
+                        results = response.json()
+                        if 'success' not in results:
+                            all_results.append(results)
+                        
+                        if (i + 1) % 40 == 0:
+                            print(f'companies processed: {i + 1} of {list_len}')
+                            time.sleep(2)
+                        break
+                    except Exception as e:
+                        # If at least 50 records were processed since last error, reset the retry count
+                        if i - processed_at_last_error >= 50:
+                            processed_at_last_error = i
+                            retry_count = -1
+                        
+                        retry_count += 1
+                        if retry_count < retry_limit:
+                            print('Error encountered, retrying in 5 minutes...')
+                            time.sleep(300)
+                        else:
+                            raise Exception('Retries exceeded')
+        except Exception as e:
+            if all_results:
+                message = f'"get_company_data" did not fully complete: {i} of {list_len} processed'
+            else:
+                message = f'Error encountered: {str(e)}'
+            print(message)
+            self.api_response.append_message(message)
+        
+        if all_results:
+            df = pd.DataFrame(all_results)
+            df = df.applymap(misc.cleanse_value)
+        else:
+            df = pd.DataFrame()
+        
+        return df
+
+    def process_companies(self, df_company, suffix):
+        """Accept a dataframe of company data and explode and write out nested datasets"""
+        def extract_company_parent(df):
+
+            df['parent_company_id'] = df['parent_company'].apply(lambda x: x.get('id', None) if isinstance(x, dict) else None)
+
+            df.drop(columns=['parent_company'], inplace=True)
+
+            return df
+
+        df_company = extract_company_parent(df_company)
+        
+        api_result = {'action':'process_companies'}
+        api_sub_results = []
+        
+        output_path = self.output_path
+
+        if self.output_production_companies_flag:
+            filename = misc.write_data_to_file(df_company, output_path + os.sep + 'tmdb_production_company', 'tmdb_production_company', suffix)
+            api_sub_result = {'filename':f"{filename}", 'record_count':f"{len(df_company):,}"}
             api_sub_results.append(api_sub_result)
 
         if api_sub_results:
